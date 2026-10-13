@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>The commons garden</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: light-dark(#fff, #1e1e1e);
+        color: light-dark(#252525, #d4d4d4);
+        font:
+          13px system-ui,
+          sans-serif;
+      }
+      h1 {
+        margin: 0 0 24px;
+        font-size: 19px;
+        font-weight: 500;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        aspect-ratio: 1.25;
+        background: light-dark(#f4f4f4, #292929);
+        margin: 18px 0;
+      }
+      label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+      }
+      input {
+        width: 100%;
+        accent-color: light-dark(#555, #bbb);
+        margin: 12px 0 20px;
+      }
+      button {
+        padding: 7px 12px;
+        border: 1px solid light-dark(#ccc, #555);
+        border-radius: 3px;
+        background: light-dark(#f4f4f4, #303030);
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+      }
+      button + button {
+        margin-left: 6px;
+      }
+      .stats {
+        display: flex;
+        gap: 32px;
+        margin: 20px 0;
+      }
+      .stats strong {
+        display: block;
+        font-size: 20px;
+        font-weight: 500;
+        margin-bottom: 4px;
+      }
+      .stats span {
+        font-size: 11px;
+        color: light-dark(#666, #aaa);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>The commons garden</h1>
+    <canvas width="600" height="480" aria-label="Resource landscape"></canvas>
+    <div class="stats">
+      <div><strong id="resources">100%</strong><span>Resources</span></div>
+      <div><strong id="season">0</strong><span>Season</span></div>
+    </div>
+    <label for="pressure"
+      >Harvesting pressure <output id="pressure-value">30%</output></label
+    >
+    <input id="pressure" type="range" min="0" max="100" value="30" />
+    <button id="advance">Next season</button><button id="reset">Reset</button>
+    <script type="module" src="./garden.js"></script>
+  </body>
+</html>

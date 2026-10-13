@@ -1,0 +1,3 @@
+- Use Conventional Commits with imperative subjects of at most 72 characters.
+- Post-hoc and tautological unit tests considered harmful, use e2e and integration tests
+- do not add extra indirection with abstractions unless clearly warranted (e.g. keeping reused functionality/layouts in sync)

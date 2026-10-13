@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<model version="NetLogo 7.0.4" nlw-version="2.15.3">
+  <code><![CDATA[; Random walks — a small model to explore and change.
+to setup
+  clear-all
+  ask patches [ set pcolor 9.7 ]
+  create-turtles population [
+    setxy random-xcor random-ycor
+    set color one-of [15 25 55 85 105]
+    set size 1.1
+    set shape "default"
+    if trails? [ pen-down ]
+  ]
+  reset-ticks
+end
+
+to go
+  ask turtles [
+    right random-float turn-angle
+    left random-float turn-angle
+    ifelse trails? [ pen-down ] [ pen-up ]
+    forward step-length
+  ]
+  tick
+end
+]]></code>
+  <widgets>
+    <view x="240" y="10" width="488" height="489" minPxcor="-20" maxPxcor="20" minPycor="-20" maxPycor="20" patchSize="11.7" fontSize="12" frameRate="30" wrappingAllowedX="true" wrappingAllowedY="true" showTickCounter="true" tickCounterLabel="ticks" updateMode="1"/>
+    <button x="10" y="10" width="100" height="36" kind="Observer" forever="false" disableUntilTicks="false" display="setup">setup</button>
+    <button x="120" y="10" width="100" height="36" kind="Observer" forever="true" disableUntilTicks="true" display="go">go</button>
+    <slider x="10" y="65" width="210" height="40" direction="Horizontal" min="1" max="200" step="1" default="40" variable="population" display="population"/>
+    <slider x="10" y="120" width="210" height="40" direction="Horizontal" min="0" max="180" step="1" default="60" variable="turn-angle" display="turn-angle" units="°"/>
+    <slider x="10" y="175" width="210" height="40" direction="Horizontal" min="0.1" max="2" step="0.1" default="0.5" variable="step-length" display="step-length"/>
+    <switch x="10" y="230" width="210" height="40" on="true" variable="trails?" display="trails?"/>
+    <monitor x="10" y="285" width="210" height="50" fontSize="11" precision="0" display="walkers">count turtles</monitor>
+    <plot x="10" y="355" width="210" height="145" display="Mean distance from center" xAxis="time" yAxis="distance" xMin="0" xMax="100" yMin="0" yMax="20" autoPlotX="true" autoPlotY="true" legend="false">
+      <setup/>
+      <update/>
+      <pen display="distance" interval="1" mode="0" color="-13345367" legend="false"><setup/><update>if any? turtles [ plot mean [distancexy 0 0] of turtles ]</update></pen>
+    </plot>
+  </widgets>
+  <info><![CDATA[## RANDOM WALKS
+
+Click **setup**, then **go**. Each walker changes direction and moves one step on every tick. The world wraps at its edges.
+
+Change **turn-angle** to compare straight paths with wandering paths. Change **step-length** while the model runs. **population** takes effect on the next setup. Toggle **trails?** to draw each walker's path.
+
+Edit the NetLogo code or controls to make the model your own. This example is released under the MIT License.
+]]></info>
+  <turtleShapes>
+    <shape name="default" rotatable="true" editableColorIndex="0">
+      <circle x="60" y="60" diameter="180" color="-1920102913" filled="true" marked="true"/>
+    </shape>
+  </turtleShapes>
+  <linkShapes/>
+</model>

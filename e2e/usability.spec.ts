@@ -1,0 +1,178 @@
+import { test, expect, type Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { config, stateDir } from '../scripts/config.mjs';
+const settings = config();
+const owner = JSON.parse(readFileSync(resolve(stateDir, 'credentials.json'), 'utf8')).users.find((user: { username: string }) => user.username === 'ada');
+async function completeSignIn(page: Page) {
+  const dialog = page.getByRole('dialog', { name: 'Sign in', exact: true });
+  await dialog.getByLabel('Username', { exact: true }).fill(owner.username);
+  await dialog.getByLabel('Password', { exact: true }).fill(owner.password);
+  await dialog.getByRole('button', { name: 'Sign in', exact: true }).click();
+}
+async function signOut(page: Page) {
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
+}
+
+test('anonymous create, fork and library installation resume after sign-in; cancellation forgets intent', async ({ page }) => {
+  await page.goto('/#/explore/artifacts');
+  await page.getByRole('button', { name: 'New artifact', exact: true }).click();
+  await completeSignIn(page);
+  await expect(page.getByRole('dialog', { name: 'New artifact', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close project dialog', exact: true }).click();
+  await signOut(page);
+  await page.getByRole('link').filter({ has: page.getByRole('heading', { name: 'Random walks', exact: true }) }).click();
+  await page.getByRole('button', { name: 'Fork', exact: true }).click();
+  await completeSignIn(page);
+  await expect(page.getByRole('dialog', { name: 'Fork artifact', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close project dialog', exact: true }).click();
+  await signOut(page);
+  await page.getByRole('link', { name: 'Libraries', exact: true }).click();
+  await page.getByRole('link').filter({ has: page.getByRole('heading', { name: 'Agent grid', exact: true }) }).click();
+  await page.getByRole('button', { name: 'Add to artifact', exact: true }).click();
+  await completeSignIn(page);
+  await expect(page.getByRole('dialog').getByLabel('Artifact', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await signOut(page);
+  await page.getByRole('button', { name: 'New artifact', exact: true }).click();
+  await page.getByRole('button', { name: 'Close sign in', exact: true }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await completeSignIn(page);
+  await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
+  await expect(page.locator('dialog[open]')).toHaveCount(0);
+});
+
+test('catalog search trims pasted terms, survives refresh and detail return, and clears filters', async ({ page }) => {
+  const catalog = (await (await page.request.get('/api/projects')).json()).projects;
+  const artifactCount = catalog.filter((item: { kind: string }) => item.kind === 'model').length;
+  await page.goto('/#/explore/models');
+  await page.getByRole('searchbox', { name: 'Search catalog' }).fill('  NetLogo walks  ');
+  await expect(page.locator('.model-row')).toHaveCount(1);
+  await page.reload();
+  await expect(page.getByRole('searchbox')).toHaveValue('NetLogo walks');
+  await page.getByRole('link').filter({ has: page.getByRole('heading', { name: 'NetLogo walks', exact: true }) }).click();
+  await page.getByRole('link', { name: 'Explore', exact: true }).click();
+  await expect(page.getByRole('searchbox')).toHaveValue('NetLogo walks');
+  await expect(page.locator('.model-row')).toHaveCount(1);
+  await page.getByRole('searchbox').fill('Diffusion');
+  await page.getByRole('checkbox', { name: 'Search both catalogs', exact: true }).check();
+  await page.getByRole('link').filter({ has: page.getByRole('heading', { name: 'Diffusion', exact: true }) }).click();
+  await page.getByRole('link', { name: 'Explore', exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Artifacts', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('checkbox', { name: 'Search both catalogs' })).toBeChecked();
+  await page.getByRole('searchbox').fill('does-not-exist');
+  await expect(page.getByRole('status')).toHaveText('No results match these filters.');
+  await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
+  await expect(page.getByRole('searchbox')).toHaveValue('');
+  await expect(page.locator('.model-row')).toHaveCount(artifactCount);
+  await expect(page.getByRole('checkbox', { name: 'Search both catalogs' })).not.toBeChecked();
+});
+
+test('mobile file and history selection reveal content; sidebar Escape restores focus', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/#/explore/artifacts');
+  await page.getByRole('link').filter({ has: page.getByRole('heading', { name: 'NetLogo walks', exact: true }) }).click();
+  await page.getByRole('button', { name: 'Show code', exact: true }).click();
+  const files = page.getByRole('button', { name: 'Files', exact: true });
+  await files.click();
+  await expect(files).toHaveAttribute('aria-expanded', 'true');
+  await page.getByRole('treeitem', { name: 'README.md', exact: false }).click();
+  await expect(page.getByRole('complementary', { name: 'Project sidebar' })).toHaveCount(0);
+  await expect(page.getByLabel('Source code', { exact: true })).toBeFocused();
+  await expect(page.getByLabel('Source code', { exact: true })).toContainText('NetLogo');
+  await files.click();
+  await expect(page.getByRole('button', { name: 'Close sidebar' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(files).toBeFocused();
+  await expect(files).toHaveAttribute('aria-expanded', 'false');
+  await page.getByRole('button', { name: 'History', exact: true }).click();
+  await page.locator('.history-select').first().click();
+  await expect(page.getByRole('complementary', { name: 'Project sidebar' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Back to draft', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Back to draft', exact: true }).click();
+  await expect(page.locator('.version-context')).toHaveCount(0);
+});
+
+test('mobile account controls fit the header and remain accessible by keyboard', async ({ page }) => {
+  await page.request.post('/api/session', { headers: { Origin: settings.appOrigin }, data: owner });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/#/explore/artifacts');
+  const account = page.getByRole('button', { name: 'Account menu', exact: true });
+  await expect(account).toBeVisible();
+  expect((await page.locator('.topbar').boundingBox())!.height).toBeLessThan(90);
+  await account.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: 'Groups', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(account).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Groups', exact: true })).toBeHidden();
+  await account.click();
+  await page.getByRole('button', { name: 'Groups', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Groups', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close groups', exact: true }).click();
+  await expect(account).toBeFocused();
+  await account.click();
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 320, height: 740 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('phone catalog exposes useful results and public/private filtering stays usable', async ({ page }) => {
+  await page.request.post('/api/session', { headers: { Origin: settings.appOrigin }, data: owner });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/#/explore/artifacts');
+  await expect(page.locator('.model-row h2').nth(1)).toBeInViewport();
+  await page.getByRole('link', { name: 'My artifacts', exact: true }).click();
+  const visibility = page.getByLabel('Project visibility', { exact: true });
+  await visibility.selectOption('private');
+  await expect(page.getByRole('heading', { name: 'Private garden study', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'NetLogo walks', exact: true })).toHaveCount(0);
+  await page.reload();
+  await expect(visibility).toHaveValue('private');
+  await visibility.selectOption('public');
+  await expect(page.getByRole('heading', { name: 'Private garden study', exact: true })).toHaveCount(0);
+  await page.getByRole('searchbox').fill('NetLogo walks');
+  await page.getByRole('link').filter({ has: page.getByRole('heading', { name: 'NetLogo walks', exact: true }) }).click();
+  await page.getByRole('link', { name: 'My artifacts', exact: true }).click();
+  await expect(visibility).toHaveValue('public');
+  await expect(page.getByRole('searchbox')).toHaveValue('NetLogo walks');
+});
+
+test('phone authors can create and resume files without a drawer covering the editor', async ({ page }) => {
+  await page.request.post('/api/session', { headers: { Origin: settings.appOrigin }, data: owner });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/#/explore/artifacts');
+  await page.getByRole('button', { name: 'New artifact', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'New artifact', exact: true });
+  await dialog.getByLabel('Title', { exact: true }).fill(`Phone authoring ${Date.now()}`);
+  await dialog.getByRole('button', { name: 'Create artifact', exact: true }).click();
+  const editor = page.getByLabel('Source code', { exact: true });
+  await expect(editor).toBeVisible();
+  const id = new URL(page.url()).hash.match(/project\/([^?]+)/)![1]!;
+  const files = page.getByRole('button', { name: 'Files', exact: true });
+  const sidebar = page.getByRole('complementary', { name: 'Project sidebar' });
+  await files.click();
+  await page.getByLabel('New file path', { exact: true }).fill('notes.md');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(sidebar).toHaveCount(0);
+  await expect(editor).toBeFocused();
+  await page.keyboard.insertText('Phone draft survives navigation.');
+  await expect.poll(async () => (await (await page.request.get(`/api/projects/${id}/draft`)).json()).draft?.changes.some((change: { path: string; content?: string }) => change.path === 'notes.md' && change.content === 'Phone draft survives navigation.')).toBe(true);
+  await page.getByRole('button', { name: 'About artifact', exact: true }).click();
+  await page.getByRole('button', { name: 'Open README.md', exact: true }).click();
+  await expect(sidebar).toHaveCount(0);
+  await expect(editor).toBeFocused();
+  await expect(editor).toContainText('Random walks');
+  await files.click();
+  await page.getByRole('button', { name: 'A notes.md', exact: true }).click();
+  await expect(sidebar).toHaveCount(0);
+  await expect(editor).toBeFocused();
+  await expect(editor).toHaveText('Phone draft survives navigation.');
+  await page.reload();
+  await expect(files).toHaveAttribute('aria-expanded', 'false');
+  await files.click();
+  await page.getByRole('treeitem', { name: 'notes.md', exact: false }).click();
+  await expect(editor).toHaveText('Phone draft survives navigation.');
+});

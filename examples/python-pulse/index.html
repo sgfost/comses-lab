@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Heat pulse</title>
+  <style>
+    :root { color-scheme: light dark; font: 13px system-ui; } body { margin: 24px; }
+    h1 { font-size: 19px; font-weight: 500; } canvas { width: 100%; background: light-dark(#f4f4f4,#292929); }
+    label { display: inline-grid; gap: 5px; margin: 12px 12px 12px 0; } input { width: 110px; }
+    button, input { font: inherit; padding: 6px; } output { display: block; margin: 12px 0; }
+    details { margin-top: 18px; } details button { margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Heat pulse</h1>
+  <canvas width="600" height="360" aria-label="Temperature profile"></canvas>
+  <label>Diffusivity<input id="diffusivity" type="number" min="0" max="0.5" step="0.05" value="0.2"></label>
+  <label>Steps<input id="steps" type="number" min="1" max="10000" value="1"></label>
+  <div><button id="run" disabled>Run</button> <button id="reset">Reset interpreter</button></div>
+  <output id="status" role="status">Loading Python…</output>
+  <p>Shared module: <code id="component">Loading pin…</code></p>
+  <script type="module" src="./view.js"></script>
+</body>
+</html>

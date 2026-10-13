@@ -1,0 +1,93 @@
+import { test, expect } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { randomUUID, randomBytes, createHash } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
+import { spawnSync } from "node:child_process";
+import { config, stateDir, instance } from "../scripts/config.mjs";
+if (!instance.startsWith("test-")) throw new Error("Isolated instance required");
+const settings = config();
+const credentials = JSON.parse(readFileSync(resolve(stateDir, "credentials.json"), "utf8"));
+const owner = credentials.users.find((user: { username: string }) => user.username === "ada");
+
+test("explicit principals constrain real source, mutation and launch capability ownership", async ({ request, playwright }) => {
+  const headers = { Origin: settings.appOrigin };
+  expect((await request.post("/api/session", { headers, data: owner })).status()).toBe(200);
+  const response = await request.post("/api/projects", { headers, data: { requestId: randomUUID(), templateId: "worker", title: "Principal access fixture", visibility: "private" } });
+  expect(response.status()).toBe(201);
+  const { project, commit } = await response.json();
+  const grantId = randomUUID();
+  const token = randomBytes(32).toString("base64url");
+  const database = new DatabaseSync(resolve(stateDir, "lab.sqlite"));
+  // Fixture grants isolate principal enforcement before the issuance routes land.
+  database.prepare("INSERT INTO agent_grants(id,owner_id,name,token_hash,state) VALUES (?,?,?,?,?)").run(grantId, project.ownerId, "Principal fixture", createHash("sha256").update(token).digest("hex"), "active");
+  database.prepare("INSERT INTO agent_project_scopes(grant_id,project_id,permission) VALUES (?,?,?)").run(grantId, project.id, "read");
+  const agent = await playwright.request.newContext({ baseURL: settings.appOrigin, extraHTTPHeaders: { Authorization: `Bearer ${token}` } });
+  const otherSession = await playwright.request.newContext({ baseURL: settings.appOrigin });
+  try {
+    expect((await (await agent.get(`/api/projects/${project.id}`)).json()).project.permission).toBe("read");
+    expect((await agent.get("/api/session")).status()).toBe(403);
+    expect((await agent.get(`/api/projects/${project.id}`, { headers: { Origin: "null" } })).status()).toBe(403);
+    expect((await request.get(`/api/projects/${project.id}`, { headers: { Authorization: `Bearer ${token}` } })).status()).toBe(401);
+    expect((await request.get(`/api/projects/${project.id}`, { headers: { Authorization: "Bearer invalid" } })).status()).toBe(401);
+    const listed = await (await agent.get("/api/projects")).json();
+    expect(listed.projects.map((item: { id: string }) => item.id)).toEqual([project.id]);
+    expect((await agent.post(`/api/projects/${project.id}/commits`, { data: { ref: "refs/heads/main", expectedCommit: commit, message: "Read scope cannot write", changes: [{ operation: "create", path: "denied.txt", content: "denied" }] } })).status()).toBe(403);
+    const made = await request.post(`/api/projects/${project.id}/launch`, { headers, data: { commit } });
+    expect(made.status()).toBe(200);
+    const humanLaunch = await made.json();
+    expect((await agent.get(`/api/launches/${humanLaunch.id}`)).status()).toBe(404);
+    expect((await agent.delete(`/api/launches/${humanLaunch.id}`, { data: {} })).status()).toBe(404);
+    expect((await otherSession.post("/api/session", { headers, data: owner })).status()).toBe(200);
+    expect((await otherSession.get(`/api/launches/${humanLaunch.id}`)).status()).toBe(404);
+    expect((await request.get(`/api/launches/${humanLaunch.id}`)).status()).toBe(200);
+    const grantLaunch = await agent.post(`/api/projects/${project.id}/launch`, { data: { commit } });
+    expect(grantLaunch.status()).toBe(200);
+    const launch = await grantLaunch.json();
+    expect((await request.delete(`/api/launches/${launch.id}`, { headers, data: {} })).status()).toBe(404);
+    expect((await agent.get(`/api/launches/${launch.id}`)).status()).toBe(200);
+    // Replacing an existing session revokes only that credential's previews.
+    expect((await request.post("/api/session", { headers, data: owner })).status()).toBe(200);
+    expect((await fetch(humanLaunch.url)).status).toBe(404);
+    const oldRuntime = new URL(humanLaunch.url);
+    expect((await fetch(`${oldRuntime.origin}/bridge/${humanLaunch.id}/bridge.js`)).status).toBe(404);
+    expect((await request.get(`/api/launches/${humanLaunch.id}`)).status()).toBe(404);
+    expect((await agent.get(`/api/launches/${launch.id}`)).status()).toBe(200);
+    expect((await fetch(launch.url)).status).toBe(200);
+    expect((await otherSession.get(`/api/projects/${project.id}`)).status()).toBe(200);
+    const lock = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `import { acquireInstanceGuard } from './scripts/instance-guard.ts'; acquireInstanceGuard(${JSON.stringify(stateDir)});`], { encoding: "utf8" });
+    expect(lock.status).not.toBe(0);
+    expect(lock.stderr).toContain("held by another native API");
+    const metadata = await request.patch(`/api/projects/${project.id}`, { headers, data: { expectedMetadataVersion: 1, dataOrigins: ["https://example.org"] } });
+    expect(metadata.status()).toBe(200);
+    // Expansion cannot widen an existing immutable snapshot.
+    expect((await fetch(launch.url)).headers.get("content-security-policy")).not.toContain("https://example.org");
+    const widened = await agent.post(`/api/projects/${project.id}/launch`, { data: { commit } });
+    expect(widened.status()).toBe(200);
+    const next = await widened.json();
+    expect((await fetch(next.url)).headers.get("content-security-policy")).toContain("connect-src");
+    expect((await fetch(next.url)).headers.get("content-security-policy")).toContain("https://example.org");
+    expect((await request.patch(`/api/projects/${project.id}`, { headers, data: { expectedMetadataVersion: 2, dataOrigins: [] } })).status()).toBe(200);
+    expect((await fetch(next.url)).status).toBe(404);
+    expect((await agent.get(`/api/launches/${next.id}`)).status()).toBe(404);
+    expect((await fetch(humanLaunch.url)).status).toBe(404);
+    const pending = randomUUID();
+    database.prepare("INSERT INTO access_updates VALUES (?,?,?,?,?,?,?,?,?)").run(pending, project.ownerId, randomUUID(), "fixture", "project", project.id, "{}", "pending", "");
+    database.prepare("INSERT OR REPLACE INTO project_access(project_id,pending_update_id) VALUES (?,?)").run(project.id, pending);
+    expect((await (await request.get(`/api/projects/${project.id}`)).json()).project.permission).toBe("read");
+    expect((await request.post(`/api/projects/${project.id}/launch`, { headers, data: { commit } })).status()).toBe(409);
+    expect((await agent.post(`/api/projects/${project.id}/commits`, { data: { ref: "refs/heads/main", expectedCommit: commit, message: "Pending blocks writes", changes: [{ operation: "create", path: "denied.txt", content: "denied" }] } })).status()).toBe(403);
+  } finally {
+    await agent.dispose();
+    await otherSession.dispose();
+    database.prepare("DELETE FROM project_access WHERE project_id=?").run(project.id);
+    database.prepare("DELETE FROM access_updates WHERE target_id=?").run(project.id);
+    database.prepare("DELETE FROM agent_project_scopes WHERE grant_id=?").run(grantId);
+    database.prepare("DELETE FROM agent_grants WHERE id=?").run(grantId);
+    database.prepare("DELETE FROM project_metadata WHERE project_id=?").run(project.id);
+    database.prepare("DELETE FROM project_provisions WHERE project_id=?").run(project.id);
+    database.prepare("DELETE FROM projects WHERE id=?").run(project.id);
+    database.close();
+    await fetch(`${settings.forgejoUrl}/api/v1/repos/${project.forgejoOwner}/${project.forgejoRepo}`, { method: "DELETE", headers: { Authorization: `Basic ${Buffer.from(`${owner.username}:${owner.password}`).toString("base64")}` } });
+  }
+});

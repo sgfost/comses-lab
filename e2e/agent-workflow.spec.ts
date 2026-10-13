@@ -1,0 +1,158 @@
+import { test, expect, type APIRequestContext } from "@playwright/test";
+import { randomUUID, createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { readFileSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { config, stateDir, instance } from "../scripts/config.mjs";
+import type { CreateProjectResponse } from "../shared/contracts.ts";
+
+if (!instance.startsWith("test-")) throw new Error("Isolated test instance required");
+const settings = config();
+const accounts = JSON.parse(readFileSync(resolve(stateDir, "credentials.json"), "utf8"));
+const owner = accounts.users.find((user: { username: string }) => user.username === "ada");
+const headers = { Origin: settings.appOrigin };
+
+test("issued bearer grants create, fork, extract and reuse libraries with live scope and revocation", async ({ request, playwright }) => {
+  test.setTimeout(90000);
+  const database = new DatabaseSync(resolve(stateDir, "lab.sqlite"));
+  const work = mkdtempSync(resolve(tmpdir(), "lab-agent-git-"));
+  const projects: CreateProjectResponse[] = [], grants: string[] = [], contexts: APIRequestContext[] = [];
+  try {
+    expect((await request.post("/api/session", { headers, data: owner })).status()).toBe(200);
+    const humanIntent = { requestId: randomUUID(), templateId: "commons", title: "Human-only scope fixture", visibility: "public" };
+    const humanCreated = await request.post("/api/projects", { headers, data: humanIntent });
+    expect(humanCreated.status()).toBe(201);
+    const humanProject = await humanCreated.json() as CreateProjectResponse;
+    projects.push(humanProject);
+    async function issue(allowCreate: boolean, scopes: {projectId: string; permission: string}[] = []) {
+      const response = await request.post("/api/agent-grants", { headers, data: { name: `Workflow ${randomUUID()}`, allowCreate, projects: scopes } });
+      expect(response.status(), await response.text()).toBe(201);
+      const result = await response.json(); grants.push(result.grant.id);
+      const client = await playwright.request.newContext({ baseURL: settings.appOrigin, extraHTTPHeaders: { Authorization: `Bearer ${result.token}` } });
+      contexts.push(client);
+      return { ...result, client };
+    }
+    expect((await request.post("/api/agent-grants", { headers, data: { name: "Invalid permission", projects: [{ projectId: "missing", permission: "write" }] } })).status()).toBe(403);
+    const agent = await issue(true);
+    expect(agent.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(database.prepare("SELECT token_hash FROM agent_grants WHERE id=?").get(agent.grant.id)?.token_hash).toBe(createHash("sha256").update(agent.token).digest("hex"));
+    expect(JSON.stringify(await (await request.get("/api/agent-grants")).json())).not.toContain(agent.token);
+    expect((await agent.client.get(`/api/agent-grants/${agent.grant.id}`)).status()).toBe(200);
+    expect((await agent.client.get("/api/agent-grants")).status()).toBe(403);
+    expect((await agent.client.post("/api/agent-grants", { data: {} })).status()).toBe(403);
+    expect((await agent.client.get(`/api/projects/${humanProject.project.id}`)).status()).toBe(404);
+    expect((await (await agent.client.get("/api/projects")).json()).projects).toEqual([]);
+    expect((await request.get("/api/projects", { headers: { Authorization: `Bearer ${agent.token}` } })).status()).toBe(401);
+    expect((await agent.client.get("/api/templates")).status()).toBe(200);
+    const identity = await (await agent.client.get("/api/agent")).json();
+    expect(identity.grant.id).toBe(agent.grant.id);
+    expect(identity.gitCredentialEndpoint).toContain(agent.grant.id);
+    expect((await agent.client.get("/api/agent-guide")).status()).toBe(200);
+    const intent = { requestId: randomUUID(), templateId: "python", title: "Agent model", visibility: "private" };
+    const made = await agent.client.post("/api/projects", { data: intent });
+    expect(made.status(), await made.text()).toBe(201);
+    const model = await made.json() as CreateProjectResponse; projects.push(model);
+    expect(model.project.permission).toBe("write");
+    const replay = await agent.client.post("/api/projects", { data: intent });
+    expect(replay.status()).toBe(200); expect((await replay.json()).project.id).toBe(model.project.id);
+    const other = await issue(true);
+    expect((await other.client.post("/api/projects", { data: intent })).status()).toBe(409);
+    expect((await agent.client.post("/api/projects", { data: humanIntent })).status()).toBe(409);
+    expect((await agent.client.patch(`/api/projects/${model.project.id}`, { data: { expectedMetadataVersion: 1, title: "Forbidden" } })).status()).toBe(403);
+    expect((await agent.client.get(`/api/projects/${model.project.id}/access`)).status()).toBe(403);
+    const limited = await issue(false, [{ projectId: model.project.id, permission: "read" }]);
+    expect((await limited.client.post("/api/projects", { data: { ...intent, requestId: randomUUID() } })).status()).toBe(403);
+    expect((await limited.client.post(`/api/projects/${model.project.id}/commits`, { data: { ref: model.ref, expectedCommit: model.commit, message: "Denied", changes: [{ operation: "create", path: "denied.txt", content: "denied" }] } })).status()).toBe(403);
+    const forkResponse = await agent.client.post(`/api/projects/${model.project.id}/forks`, { data: { requestId: randomUUID(), commit: model.commit, title: "Agent fork", visibility: "private" } });
+    expect(forkResponse.status(), await forkResponse.text()).toBe(201);
+    const fork = await forkResponse.json() as CreateProjectResponse; projects.push(fork);
+    expect(fork.commit).toBe(model.commit); expect(fork.project.permission).toBe("write");
+    const extracted = await agent.client.post(`/api/projects/${model.project.id}/extractions`, { data: { requestId: randomUUID(), commit: model.commit, paths: ["diffusion.py"], title: "Agent library", visibility: "private" } });
+    expect(extracted.status(), await extracted.text()).toBe(201);
+    const library = await extracted.json() as CreateProjectResponse; projects.push(library);
+    expect(library.project.kind).toBe("library");
+    const attach = await agent.client.post(`/api/projects/${fork.project.id}/libraries`, { data: { ref: fork.ref, expectedCommit: fork.commit, libraryId: library.project.id, commit: library.commit, paths: ["diffusion.py"], directory: "lib/diffusion", message: "Attach extracted library" } });
+    expect(attach.status(), await attach.text()).toBe(201);
+    fork.commit = (await attach.json()).commit;
+    const savedLibraries = await (await agent.client.get(`/api/projects/${fork.project.id}/libraries?commit=${fork.commit}`)).json();
+    expect(savedLibraries.libraries[0].projectId).toBe(library.project.id);
+    const copied = await (await agent.client.get(`/api/projects/${fork.project.id}/file?commit=${fork.commit}&path=lib/diffusion/diffusion.py`)).json();
+    const source = await (await agent.client.get(`/api/projects/${library.project.id}/file?commit=${library.commit}&path=diffusion.py`)).json();
+    expect(copied.content).toBe(source.content);
+    const remove = await agent.client.delete(`/api/projects/${fork.project.id}/libraries`, { data: { ref: fork.ref, expectedCommit: fork.commit, directory: "lib/diffusion", message: "Remove extracted library" } });
+    expect(remove.status(), await remove.text()).toBe(201);
+    expect((await limited.client.get(`/api/projects/${model.project.id}/draft`)).status()).toBe(403);
+    const draftResponse = await agent.client.put(`/api/projects/${model.project.id}/draft`, { data: { expectedVersion: 0, ref: model.ref, baseCommit: model.commit, changes: [{ operation: "create", path: "agent-draft.txt", content: "A draft shared with the owner\n" }] } });
+    expect(draftResponse.status(), await draftResponse.text()).toBe(200);
+    const draft = (await draftResponse.json()).draft;
+    expect((await (await request.get(`/api/projects/${model.project.id}/draft`)).json()).draft.version).toBe(draft.version);
+    const draftSave = await agent.client.post(`/api/projects/${model.project.id}/draft/save`, { data: { expectedVersion: draft.version, message: "Save agent draft" } });
+    expect(draftSave.status(), await draftSave.text()).toBe(201);
+    model.commit = (await draftSave.json()).commit;
+    expect((await (await agent.client.get(`/api/projects/${model.project.id}/file?commit=${model.commit}&path=agent-draft.txt`)).json()).content).toContain("shared with the owner");
+    const gitIntent = { requestId: randomUUID(), projectId: model.project.id, permission: "write" };
+    const gitResponse = await agent.client.post(`/api/agent-grants/${agent.grant.id}/git-credentials`, { data: gitIntent });
+    expect(gitResponse.status(), await gitResponse.text()).toBe(201);
+    const gitCredential = await gitResponse.json();
+    expect((await agent.client.post(`/api/agent-grants/${agent.grant.id}/git-credentials`, { data: gitIntent })).status()).toBe(409);
+    expect(JSON.stringify(await (await agent.client.get(`/api/agent-grants/${agent.grant.id}`)).json())).not.toContain(gitCredential.token);
+    const gitEnv = { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "http.extraHeader", GIT_CONFIG_VALUE_0: `Authorization: Basic ${Buffer.from(`${gitCredential.credential.username}:${gitCredential.token}`).toString("base64")}` };
+    const git = (...args: string[]) => spawnSync("git", ["-c", "credential.helper=", "-c", "core.hooksPath=/dev/null", ...args], { cwd: work, env: gitEnv, encoding: "utf8", timeout: 30000 });
+    expect(git("clone", gitCredential.credential.url, ".").status).toBe(0);
+    writeFileSync(resolve(work, "agent-note.txt"), "Created by an agent using normal Git\n");
+    expect(git("add", "agent-note.txt").status).toBe(0);
+    expect(git("-c", "user.name=Lab agent", "-c", "user.email=agent@lab.invalid", "commit", "-m", "Add agent note").status).toBe(0);
+    expect(git("push", "origin", "HEAD:refs/heads/main").status).toBe(0);
+    const gitCommit = git("rev-parse", "HEAD").stdout.trim();
+    const gitFile = await agent.client.get(`/api/projects/${model.project.id}/file?commit=${gitCommit}&path=agent-note.txt`);
+    expect(gitFile.status()).toBe(200); expect((await gitFile.json()).content).toContain("normal Git");
+    expect(git("push", `${settings.forgejoUrl}/${humanProject.project.forgejoOwner}/${humanProject.project.forgejoRepo}.git`, "HEAD:refs/heads/agent-denied").status).not.toBe(0);
+    expect(git("ls-remote", `${settings.forgejoUrl}/${fork.project.forgejoOwner}/${fork.project.forgejoRepo}.git`).status).not.toBe(0);
+    const readGitResponse = await limited.client.post(`/api/agent-grants/${limited.grant.id}/git-credentials`, { data: { ...gitIntent, requestId: randomUUID(), permission: "write" } });
+    expect(readGitResponse.status()).toBe(403);
+    const policyGitResponse = await agent.client.post(`/api/agent-grants/${agent.grant.id}/git-credentials`, { data: { requestId: randomUUID(), projectId: fork.project.id, permission: "read" } });
+    expect(policyGitResponse.status(), await policyGitResponse.text()).toBe(201);
+    const policyCredential = await policyGitResponse.json();
+    const policyAuth = { Authorization: `Basic ${Buffer.from(`${policyCredential.credential.username}:${policyCredential.token}`).toString("base64")}` };
+    const gitAdvertisement = `${policyCredential.credential.url}/info/refs?service=git-upload-pack`;
+    expect((await fetch(gitAdvertisement, { headers: policyAuth })).status).toBe(200);
+    const policyChange = await request.put(`/api/projects/${fork.project.id}/access`, { headers, data: { requestId: randomUUID(), expectedVersion: 1, visibility: "public", groupId: null, confirmPublic: true } });
+    expect(policyChange.status(), await policyChange.text()).toBe(200);
+    expect((await fetch(gitAdvertisement, { headers: policyAuth })).status).toBe(401);
+    const launchResponse = await agent.client.post(`/api/projects/${model.project.id}/launch`, { data: { commit: model.commit } });
+    expect(launchResponse.status(), await launchResponse.text()).toBe(200);
+    const launch = await launchResponse.json(); expect((await fetch(launch.url)).status).toBe(200);
+    expect((await agent.client.delete(`/api/agent-grants/${agent.grant.id}`, { data: {} })).status()).toBe(403);
+    expect((await request.delete(`/api/agent-grants/${agent.grant.id}`, { headers, data: {} })).status()).toBe(200);
+    expect((await fetch(launch.url)).status).toBe(404);
+    expect(git("ls-remote", gitCredential.credential.url).status).not.toBe(0);
+    expect(git("push", "origin", "HEAD:refs/heads/agent-revoked").status).not.toBe(0);
+    expect((await agent.client.get("/api/projects")).status()).toBe(401);
+    expect((await agent.client.post("/api/projects", { data: intent })).status()).toBe(401);
+    expect((await request.delete(`/api/agent-grants/${agent.grant.id}`, { headers, data: {} })).status()).toBe(200);
+  } finally {
+    for (const context of contexts) await context.dispose();
+    for (const id of grants) database.prepare("DELETE FROM agent_project_scopes WHERE grant_id=?").run(id);
+    for (const { project } of projects) {
+      database.prepare("DELETE FROM project_drafts WHERE project_id=?").run(project.id);
+      database.prepare("DELETE FROM access_update_projects WHERE project_id=?").run(project.id);
+      database.prepare("DELETE FROM access_updates WHERE target_id=?").run(project.id);
+      database.prepare("DELETE FROM project_provisions WHERE project_id=?").run(project.id);
+      database.prepare("DELETE FROM project_metadata WHERE project_id=?").run(project.id);
+      database.prepare("DELETE FROM project_access WHERE project_id=?").run(project.id);
+    }
+    for (const id of grants) {
+      database.prepare("DELETE FROM agent_credential_token_ids WHERE credential_id IN (SELECT id FROM agent_git_credentials WHERE grant_id=?)").run(id);
+      database.prepare("DELETE FROM agent_git_credentials WHERE grant_id=?").run(id);
+    }
+    for (const id of grants) database.prepare("DELETE FROM agent_grants WHERE id=?").run(id);
+    for (const { project } of projects.reverse()) {
+      database.prepare("DELETE FROM projects WHERE id=?").run(project.id);
+      await fetch(`${settings.forgejoUrl}/api/v1/repos/${project.forgejoOwner}/${project.forgejoRepo}`, { method: "DELETE", headers: { Authorization: `Basic ${Buffer.from(`${owner.username}:${owner.password}`).toString("base64")}` } });
+    }
+    database.close();
+    rmSync(work, { recursive: true, force: true });
+  }
+});

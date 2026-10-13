@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>External observations</title>
+  <style>
+    :root { color-scheme: light dark; font: 13px system-ui; }
+    body { margin: 24px; max-width: 680px; } h1 { font-size: 19px; font-weight: 500; }
+    label { display: grid; gap: 6px; margin: 20px 0; } input, button { font: inherit; padding: 6px; }
+    output { display: block; margin: 12px 0 24px; }
+  </style>
+</head>
+<body>
+  <h1>External observations</h1>
+  <label>Dataset URL<input id="dataset" type="url" value="https://data.example.org/observations.json"></label>
+  <button id="javascript">Sum in JavaScript</button>
+  <output id="javascript-result" role="status">No JavaScript result</output>
+  <button id="python" disabled>Sum squares in Python</button>
+  <output id="python-result" role="status">Loading Python…</output>
+  <script type="module" src="./observations.js"></script>
+</body>
+</html>

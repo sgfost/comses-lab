@@ -1,0 +1,36 @@
+{
+  "name": "comses-lab",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "web",
+    "server"
+  ],
+  "engines": {
+    "node": "24.x"
+  },
+  "packageManager": "npm@11.8.0",
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "forgejo": "node scripts/forgejo.mjs",
+    "bootstrap": "tsx scripts/bootstrap.ts",
+    "dev": "node scripts/dev.mjs",
+    "check": "vue-tsc --noEmit -p web/tsconfig.json && tsc --noEmit",
+    "build": "npm run build -w web",
+    "test:e2e": "node scripts/test.mjs",
+    "build:demo": "vite build --config web/vite.config.ts --mode demo",
+    "dev:demo": "vite --config web/vite.config.ts --mode demo",
+    "serve:demo": "node scripts/serve-demo.mjs",
+    "test:demo": "npm run build:demo && playwright test --config playwright.demo.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "24.13.2",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vue-tsc": "3.3.11"
+  },
+  "dependencies": {
+    "pyodide": "0.29.5"
+  }
+}

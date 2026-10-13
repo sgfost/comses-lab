@@ -1,0 +1,13 @@
+{
+  "version": "2.15.3",
+  "url": "https://netlogoweb.org/versions/2.15.3.html",
+  "sha256": "e608a0e11e1c92693a53322bdb8d47b006f5bc05a21c30df3d97136bdd3a7d3c",
+  "bytes": 4594642,
+  "retrieved": "2026-10-07",
+  "galapagosCommit": "73db327066973d7146273e259ebac4020857e807",
+  "galapagosSource": "https://github.com/NetLogo/Galapagos/tree/73db327066973d7146273e259ebac4020857e807",
+  "tortoiseVersion": "1.0-cc8fc6e",
+  "tortoiseSource": "https://github.com/NetLogo/Tortoise/tree/cc8fc6e",
+  "netLogoVersion": "7.0.4",
+  "modifications": "None. Lab's runtime response adds its integration bridge and model source."
+}
