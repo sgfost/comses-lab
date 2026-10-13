@@ -48,7 +48,8 @@ export async function createDemoLaunch(project: Project, commit: string, source:
   const bridge = `(${installPreviewFit.toString()})(${json(context)});(${installBridge.toString()})(${json({ ...context,maxText:MAX_RUNTIME_TEXT,maxEvents:MAX_RUNTIME_EVENTS_PER_SECOND })});`;
   const assetBase = demoBase.href;
   const netlogo = /\.nlogox?$/i.test(project.entrypoint);
-  const policy = `default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob: ${demoBase.origin}; style-src 'unsafe-inline' blob:; img-src data: blob:; font-src data:; connect-src blob: ${demoBase.origin} ${project.dataOrigins.join(' ')}; worker-src blob:; frame-src ${netlogo ? "blob: data:" : "'none'"}; object-src 'none'; base-uri 'none'; form-action 'none'`;
+  // Firefox checks worker module imports against worker-src as well as script-src.
+  const policy = `default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob: ${demoBase.origin}; style-src 'unsafe-inline' blob:; img-src data: blob:; font-src data:; connect-src blob: ${demoBase.origin} ${project.dataOrigins.join(' ')}; worker-src blob: ${new URL("vendor/pyodide/", demoBase).href}; frame-src ${netlogo ? "blob: data:" : "'none'"}; object-src 'none'; base-uri 'none'; form-action 'none'`;
   let html: string;
   if (netlogo) {
     const player = await (netlogoPlayer ??= fetch(new URL('vendor/netlogo/player.html',demoBase)).then(r => { if (!r.ok) throw new Error('Could not load NetLogo.'); return r.text(); }).catch(e => {netlogoPlayer=undefined;throw e;}));

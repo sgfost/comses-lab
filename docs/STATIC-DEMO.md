@@ -66,10 +66,10 @@ NetLogo uses the same pinned compiler/player and interface bridge. Its preview g
 ## Verification
 
 ```sh
-npx playwright install chromium
+npx playwright install chromium firefox
 npm run check
 npm run test:demo
 npm run build
 ```
 
-The demo integration tests build the production output and serve it at `/comses-lab/` on port 5210. They exercise real browser execution, edits, local persistence, version history, workspace transfer, libraries, and NetLogo interface editing. They reject API requests so the tests cannot silently depend on a running development backend. Each test uses a fresh browser context and leaves development state untouched. Browser verification currently covers Chromium.
+The demo integration tests build the production output and serve it at `/comses-lab/` on port 5210. They exercise real browser execution, edits, local persistence, version history, workspace transfer, libraries, and NetLogo interface editing. They reject API requests so the tests cannot silently depend on a running development backend. Each test uses a fresh browser context and leaves development state untouched. Browser verification covers Chromium and Firefox.
