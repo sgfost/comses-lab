@@ -249,10 +249,13 @@ summary {
 
 .statusbar {
   min-height: 30px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
+  padding: 0 12px;
+  border-top: 1px solid var(--border);
+  background: var(--toolbar);
   color: var(--muted);
   font-size: 11px;
 }
@@ -261,6 +264,9 @@ summary {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.statusbar > span + span {
   padding-left: 15px;
 }
 
@@ -302,24 +308,26 @@ summary {
 
 .catalog-nav {
   display: flex;
-  gap: 30px;
+  gap: 6px;
   margin-bottom: 38px;
 }
 
 .catalog-nav a {
-  padding: 12px 0;
+  padding: 9px 16px;
   color: var(--muted);
-  border-bottom: 2px solid transparent;
+  border-radius: 8px;
+  background: var(--panel);
 }
 
 .catalog-nav a[aria-current="page"] {
-  color: var(--text);
-  border-color: var(--green);
+  color: var(--accent);
+  background: var(--accent-wash);
   font-weight: 700;
 }
 
 .catalog-nav a:hover {
   color: var(--text);
+  background: var(--hover);
 }
 
 .catalog-toolbar {
@@ -578,18 +586,19 @@ summary {
   display: flex;
   flex: 1;
   min-height: 0;
-  padding: 0 24px;
+  padding: 0;
+  border-top: 1px solid var(--border);
 }
 
 .sidebar {
   width: var(--sidebar-width);
   min-width: 150px;
+  border-left: 1px solid var(--border);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background: var(--toolbar);
-  border-radius: 8px;
 }
 
 .sidebar-close {
@@ -625,39 +634,19 @@ summary {
 
 .file-tree {
   padding: 0 6px;
+  --trees-font-family-override: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --trees-font-size-override: 12px;
+  --trees-theme-sidebar-bg: var(--toolbar);
+  --trees-theme-sidebar-fg: var(--text);
+  --trees-theme-list-active-selection-bg: var(--selected);
+  --trees-theme-list-active-selection-fg: var(--accent);
+  --trees-theme-list-hover-bg: var(--hover);
+  --trees-theme-focus-ring: var(--focus);
 }
 
-.file {
-  width: 100%;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 7px 12px;
-  border-radius: 6px;
-  text-align: left;
-  white-space: nowrap;
-  font-size: 12px;
-}
-
-.file.selected {
-  background: var(--selected);
-  color: var(--accent);
-}
-
-.file.directory {
-  color: var(--muted);
-}
-
-.file > span:last-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.file-symbol {
-  width: 15px;
-  color: var(--muted);
-  font: 9px monospace;
+.file-tree file-tree-container {
+  display: block;
+  height: min(var(--file-tree-height), 45dvh);
 }
 
 .new-file-form {
@@ -703,7 +692,6 @@ summary {
   min-width: 0;
   display: flex;
   overflow: hidden;
-  border-radius: 8px;
   background: var(--background);
 }
 
@@ -829,7 +817,7 @@ summary {
   left: calc(50% - 14px);
 }
 
-.work-panes .splitter {
+.workspace > .splitter, .work-panes .splitter {
   width: 1px;
   min-width: 1px;
   flex-shrink: 0;
@@ -847,7 +835,7 @@ summary {
 
 /* The grab area extends beyond the visible divider. */
 
-.work-panes .splitter::before {
+.workspace > .splitter::before, .work-panes .splitter::before {
   content: "";
   position: absolute;
   inset: 0 -4px;
@@ -857,11 +845,11 @@ summary {
   inset: -4px 0;
 }
 
-.work-panes .splitter::after {
+.workspace > .splitter::after, .work-panes .splitter::after {
   display: none;
 }
 
-.work-panes .splitter:hover, .work-panes .splitter:focus-visible {
+.workspace > .splitter:hover, .workspace > .splitter:focus-visible, .work-panes .splitter:hover, .work-panes .splitter:focus-visible {
   background: var(--accent);
 }
 
@@ -940,6 +928,14 @@ summary {
 }
 
 .editor-actions .quiet:hover {
+  background: var(--hover);
+}
+
+.editor-actions .icon-button {
+  background: transparent;
+}
+
+.editor-actions .icon-button:hover {
   background: var(--hover);
 }
 
@@ -1664,41 +1660,6 @@ dd {
   margin-top: 6px;
 }
 
-.dependency-details {
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.dependency-details summary {
-  padding: 4px 0;
-}
-
-.dependency-location {
-  margin: 8px 0;
-}
-
-.dependency-file {
-  font-size: 11px;
-  padding: 2px 0;
-}
-
-.dependency-details .library-actions {
-  margin-top: 8px;
-}
-
-.browse-libraries {
-  display: flex;
-  justify-content: space-between;
-  color: var(--muted);
-  font-size: 11px;
-  margin-top: 14px;
-}
-
-.browse-libraries:hover {
-  color: var(--text);
-}
-
 .library-empty {
   color: var(--muted);
   font-size: 12px;
@@ -1761,7 +1722,7 @@ dd {
     font-size: 11px;
   }
 
-  .workspace, .workspace-toolbar {
+  .workspace-toolbar {
     padding-left: 12px;
     padding-right: 12px;
   }
@@ -1884,8 +1845,8 @@ dd {
     z-index: 5;
     top: 0;
     bottom: 0;
-    left: 12px;
-    width: min(280px, calc(100% - 24px));
+    left: 0;
+    width: min(280px, 100%);
     box-shadow: 8px 0 24px #18232b18;
   }
 
@@ -1966,22 +1927,21 @@ dd {
 /* Persistent app navigation is separate from the project's file tree. */
 .app-body { display: flex; flex: 1; min-height: 0; }
 .app-content { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
-.app-nav { display: flex; flex-direction: column; flex-shrink: 0; gap: 4px; width: 176px; padding: 12px 10px; margin: 0 0 20px 20px; border-radius: 10px; background: var(--toolbar); }
-.app-nav a { padding: 11px 12px; border-radius: 7px; font-size: 13px; }
-.app-nav a:hover { background: var(--panel); }
-.app-nav a[aria-current="page"] { color: var(--green); background: var(--green-wash); font-weight: 700; }
-.nav-section { padding: 24px 12px 8px; color: var(--muted); font-size: 11px; }
+.app-nav { display: flex; flex-direction: column; flex-shrink: 0; gap: 8px; width: 80px; padding: 12px 6px; background: var(--toolbar); }
+.app-nav a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; min-height: 64px; padding: 10px 2px; border-radius: 6px; color: var(--muted); font-size: 10px; text-align: center; }
+.app-nav svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.app-nav a:hover { background: var(--hover); color: var(--text); }
+.app-nav a[aria-current="page"] { color: var(--accent); background: var(--accent-wash); font-weight: 700; }
 .catalog-context { color: var(--muted); font-size: 13px; margin: -12px 0 24px; }
 @media (max-width: 1000px) and (min-width: 651px) {
-  .app-nav { width: 144px; margin-left: 12px; padding: 8px 4px; }
   .explore-page { padding: 20px 24px 40px; }
   .model-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 650px) {
   .app-body { flex-direction: column; }
-  .app-nav { flex-direction: row; width: auto; margin: 0 12px 12px; padding: 4px; overflow-x: auto; }
-  .app-nav a { white-space: nowrap; padding: 9px 10px; }
-  .nav-section { display: none; }
+  .app-nav { flex-direction: row; width: auto; padding: 4px 12px; gap: 4px; overflow-x: auto; }
+  .app-nav a { flex-direction: row; min-height: 44px; white-space: nowrap; padding: 8px 10px; font-size: 11px; }
+  .app-nav svg { width: 18px; height: 18px; }
   .catalog-context { margin-top: 0; }
 }
 
@@ -1990,7 +1950,14 @@ dd {
 .preview-size { font-size: 11px; padding: 5px 8px; width: auto; min-width: 84px; flex-shrink: 0; }
 .preview-toolbar { flex-wrap: wrap; flex-shrink: 0; height: auto; padding-top: 6px; padding-bottom: 6px; }
 
-.demo-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 20px; padding: 10px 24px; background: #edf2ef; border-bottom: 1px solid #d4ded8; color: #31483c; font-size: 12px; }
-.demo-banner > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
-.demo-banner .quiet { font-size: 12px; }
-.demo-banner p { flex-basis: 100%; margin: 0; color: #a02c26; }
+.demo-banner { display: flex; flex-shrink: 0; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 20px; padding: 4px 24px; background: #292d31; color: #e4e7e9; font-size: 12px; line-height: 1.5; }
+.demo-banner > div { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 16px; }
+.demo-banner strong { color: #fff; }
+.demo-banner .demo-actions { gap: 4px; }
+.demo-banner .quiet { padding: 4px 8px; background: transparent; color: #e4e7e9; font-size: 11px; }
+.demo-banner .quiet:hover { background: #41464b; color: #fff; }
+.demo-banner :focus-visible { outline-color: #fff; }
+.demo-banner p { flex-basis: 100%; margin: 0; color: #ffb4ae; }
+@media (max-width: 650px) {
+  .demo-banner { padding: 6px 16px; }
+}

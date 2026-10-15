@@ -42,7 +42,7 @@ test('the garden fits a laptop pane, remains interactive, and switches to origin
   await fits(page);
   await expect(frame(page).locator('#season')).toHaveText('1');
   await expect(page.locator('iframe')).toHaveAttribute('src', src!);
-  await page.getByRole('button', { name: 'Show code', exact: true }).click();
+  await page.getByRole('treeitem', { name: 'README.md', exact: false }).click();
   await fits(page);
   await page.setViewportSize({ width: 1024, height: 640 });
   await fits(page);
@@ -83,7 +83,7 @@ test('NetLogo fits fixed widgets, retains working controls, and uses actual size
   await go.click();
   await expect.poll(() => frame(page).locator('body').evaluate(() => (window as any).world.ticker.tickCount())).toBeGreaterThan(1);
   await go.click();
-  await page.getByRole('button', { name: 'Show code', exact: true }).click();
+  await page.getByRole('treeitem', { name: 'README.md', exact: false }).click();
   await fits(page);
   await page.setViewportSize({ width: 1024, height: 640 });
   await fits(page);

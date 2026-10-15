@@ -19,8 +19,11 @@ async function replaceSource(page: Page, text: string) {
   await editor.click(); await page.keyboard.press(`${mod}+A`); await page.keyboard.insertText(text);
 }
 async function save(page: Page, message: string) {
-  const showCode = page.getByRole('button', {name:'Show code',exact:true});
-  if (await showCode.isVisible()) await showCode.click();
+  if (!(await page.locator('.code-console').isVisible())) {
+    const files = page.getByRole('button', { name: 'Files', exact: true });
+    if (await files.getAttribute('aria-expanded') !== 'true') await files.click();
+    await page.getByRole('treeitem', { name: 'README.md', exact: true }).click();
+  }
   await page.getByLabel('What changed?', { exact:true }).fill(message);
   await page.getByRole('button', { name:'Save version', exact:true }).click();
   await expect(page.getByRole('button', { name:'Save version', exact:true })).toBeDisabled();
@@ -32,34 +35,29 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/**', route => { throw new Error(`Unexpected backend request: ${route.request().url()}`); });
 });
 
-test('catalog, real worker and Python runs, nested libraries, and isolated model code', async ({ page }) => {
+test('showcase catalog, Python workers, physics controls, and isolated model code', async ({ page }) => {
   await page.goto('./');
-  await expect(page.getByRole('heading',{name:/Artifacts/})).toBeVisible();
-  await expect(page.getByRole('button',{name:'Sign in',exact:true})).toHaveCount(0);
-  await page.getByRole('searchbox').fill('Random walks');
-  await page.getByRole('link').filter({has:page.getByRole('heading',{name:'Random walks',exact:true})}).click();
-  await expect(preview(page).getByRole('status')).toHaveText('Ready');
-  await preview(page).getByRole('button',{name:'Run',exact:true}).click();
-  await expect(preview(page).getByRole('status')).toContainText('Mean squared displacement:');
+  await expect(page.locator('.model-row')).toHaveCount(5);
+  await page.getByRole('searchbox').fill('Galaxy encounter');
+  await page.getByRole('link').filter({has:page.getByRole('heading',{name:'Galaxy encounter',exact:true})}).click();
+  await expect(preview(page).getByRole('status')).toContainText('Running');
   const modelFrame = page.frames().find(f => f.url().startsWith('blob:'))!;
   expect(await modelFrame.evaluate(() => { try { void parent.document.body; return false; } catch { return true; } })).toBe(true);
   expect(await modelFrame.evaluate(() => { try { void indexedDB.open('probe'); return false; } catch { return true; } })).toBe(true);
-  await page.goto('./#/project/python');
-  await expect(preview(page).getByRole('status')).toContainText('Python ready');
-  await preview(page).getByRole('button',{name:'Run',exact:true}).click();
-  await expect(preview(page).getByRole('status')).toContainText('Total heat: 2000.000');
-  await page.goto('./#/project/python-pulse');
-  await expect(preview(page).getByRole('status')).toHaveText('Python ready');
-  await preview(page).getByRole('button',{name:'Run',exact:true}).click();
-  await expect(preview(page).getByRole('status')).toHaveText('Peak: 60.000 · Contrast: 60.000 · Total: 100.000');
-  await page.goto('./#/project/grid-walkers');
-  await expect(preview(page).locator('canvas')).toBeVisible();
-  await expect(page.getByRole('link',{name:'Agent grid',exact:true})).toBeVisible();
-  await page.screenshot({path:'test-results/demo-model.png'});
+  for (const id of ['ant-trails', 'predator-prey', 'wave-tank']) {
+    await page.goto(`./#/project/${id}`);
+    await expect(preview(page).getByRole('button', {name:'Pause',exact:true})).toBeEnabled({timeout:45000});
+    await preview(page).getByRole('button', {name:'Pause',exact:true}).click();
+    await expect(preview(page).getByRole('status')).toContainText('Paused');
+    await preview(page).getByRole('button', {name:'Step',exact:true}).click();
+    await expect(preview(page).locator('#world')).toBeVisible();
+  }
+  await page.goto('./#/project/agent-grid');
+  await expect(page.getByRole('link',{name:'Browser kit',exact:true})).toBeVisible();
 });
 
 test('fork, live edit, persist draft, save history, compare, restore and export/import', async ({ page, browser }) => {
-  await fork(page,'commons','Local garden');
+  await fork(page,'galaxy-encounter','Local galaxy');
   const url = page.url();
   await page.getByRole('treeitem',{name:'index.html',exact:false}).click();
   await replaceSource(page,'<!doctype html><h1>My local experiment</h1><script type="module">document.body.dataset.ran="yes";</script>');
@@ -74,10 +72,10 @@ test('fork, live edit, persist draft, save history, compare, restore and export/
   await page.getByRole('textbox',{name:'Commit diff'}).click();
   await page.getByRole('textbox',{name:'Commit diff'}).press(`${mod}+End`);
   await expect(page.getByRole('textbox',{name:'Commit diff'})).toContainText('My local experiment');
-  await page.locator('.history-select').filter({hasText:'Copy The commons garden'}).click();
+  await page.locator('.history-select').filter({hasText:'Copy Galaxy encounter'}).click();
   await page.getByRole('button',{name:'Restore this version',exact:true}).click();
   await page.getByRole('button',{name:'Restore version',exact:true}).click();
-  await expect(preview(page).getByRole('heading',{name:'The commons garden'})).toBeVisible();
+  await expect(preview(page).getByRole('heading',{name:'Galaxy encounter'})).toBeVisible();
   const downloaded = page.waitForEvent('download');
   await page.getByRole('button',{name:'Export workspace'}).click();
   const download = await downloaded; const path = await download.path();
@@ -86,8 +84,8 @@ test('fork, live edit, persist draft, save history, compare, restore and export/
   await second.goto(url);
   await expect(second.getByRole('alert')).toContainText('Project not found');
   await second.getByLabel('Import demo workspace').setInputFiles(path!);
-  await expect(second.locator('.crumb')).toContainText('Local garden');
-  await expect(preview(second).getByRole('heading',{name:'The commons garden'})).toBeVisible();
+  await expect(second.locator('.crumb')).toContainText('Local galaxy');
+  await expect(preview(second).getByRole('heading',{name:'Galaxy encounter'})).toBeVisible();
   await other.close();
   await page.getByRole('button',{name:'Reset demo'}).click();
   await page.getByRole('link',{name:'My artifacts',exact:true}).click();
@@ -98,10 +96,10 @@ test('create a model and install a library in its draft', async ({ page }) => {
   await page.goto('./');
   await page.getByRole('button',{name:'New artifact'}).click();
   const dialog = page.getByRole('dialog',{name:'New artifact',exact:true});
-  await dialog.getByLabel('Template',{exact:true}).selectOption('worker');
+  await dialog.getByLabel('Template',{exact:true}).selectOption('galaxy-encounter');
   await dialog.getByLabel('Title',{exact:true}).fill('New browser experiment');
   await dialog.getByRole('button',{name:'Create artifact',exact:true}).click();
-  await expect(preview(page).getByRole('status')).toHaveText('Ready');
+  await expect(preview(page).getByRole('status')).toContainText('Running');
   await page.getByRole('button',{name:'Add library',exact:true}).click();
   const install = page.getByRole('dialog');
   await expect(install).toBeVisible();
@@ -156,17 +154,46 @@ test('NetLogo runs, persists interface edits, and exports portable models', asyn
 });
 
 test('editing Python source changes real simulation output and persists', async ({ page }) => {
-  await fork(page,'python','Python experiment');
+  await fork(page,'ant-trails','Python experiment');
   await page.getByRole('treeitem',{name:'model.py',exact:false}).click();
-  await replaceSource(page,'def simulate(steps, diffusivity):\n    return [21.0, 21.0]\n');
+  await replaceSource(page, 'def command(data):\n    return dict(width=1, height=1, tick=0, delivered=777, agents=0, nest=[0.5,0.5], trail=[0], food=[0], ants=[])\n');
   await expect(page.getByLabel('Save status')).toHaveText('Draft saved');
   await save(page,'Change the Python experiment');
   await page.reload();
-  await expect(preview(page).getByRole('status')).toContainText('Python ready');
-  await preview(page).getByRole('button',{name:'Run',exact:true}).click();
-  await expect(preview(page).getByRole('status')).toHaveText('Peak temperature: 21.000 · Total heat: 42.000');
+  await expect(preview(page).locator('#delivered')).toHaveText('777', {timeout:45000});
   await page.getByRole('button',{name:'Console',exact:true}).click();
   await expect(page.getByLabel('Artifact console')).toContainText('Python interpreter ready');
   await page.getByRole('button',{name:'Stop',exact:true}).click();
   await expect(page.locator('iframe[title="Artifact preview"]')).toHaveCount(0);
+});
+
+test('file tree opens nested files by keyboard and stays in sync with CodeMirror', async ({ page }) => {
+  await fork(page, 'galaxy-encounter', 'Tree navigation');
+  await page.getByLabel('New file path').fill('notes/experiment.md');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  const tree = page.getByRole('tree', { name: 'Source files' });
+  const folder = tree.getByRole('treeitem', { name: 'notes', exact: true });
+  const file = tree.getByRole('treeitem', { name: 'experiment.md', exact: true });
+  await expect(file).toHaveAttribute('aria-selected', 'true');
+  await replaceSource(page, '# Experiment notes');
+  await expect(page.getByLabel('Save status')).toHaveText('Draft saved');
+  await folder.click();
+  await expect(file).toHaveCount(0);
+  await folder.press('ArrowRight');
+  await expect(file).toBeVisible();
+  await page.getByRole('button', { name: 'Close code view', exact: true }).click();
+  await folder.focus();
+  await folder.press('ArrowRight');
+  await page.keyboard.press('Enter');
+  await expect(file).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByLabel('Source code', { exact: true })).toContainText('Experiment notes');
+  await page.getByRole('button', { name: 'Close code view', exact: true }).click();
+  await file.click();
+  await expect(page.getByLabel('Source code', { exact: true })).toBeVisible();
+  await page.getByLabel('New file path').fill('notes/second.md');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(tree.getByRole('treeitem', { name: 'second.md', exact: true })).toBeVisible();
+  await file.click();
+  await expect(page.getByLabel('Source code', { exact: true })).toContainText('Experiment notes');
+  await page.screenshot({ path: 'test-results/pierre-tree.png' });
 });

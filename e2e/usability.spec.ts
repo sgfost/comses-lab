@@ -73,7 +73,6 @@ test('mobile file and history selection reveal content; sidebar Escape restores 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/#/explore/artifacts');
   await page.getByRole('link').filter({ has: page.getByRole('heading', { name: 'NetLogo walks', exact: true }) }).click();
-  await page.getByRole('button', { name: 'Show code', exact: true }).click();
   const files = page.getByRole('button', { name: 'Files', exact: true });
   await files.click();
   await expect(files).toHaveAttribute('aria-expanded', 'true');

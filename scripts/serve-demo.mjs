@@ -10,7 +10,7 @@ const port = Number(process.env.DEMO_PORT || 5200);
 createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
-    if (url.pathname === '/' && base !== '/') { res.writeHead(302, { Location: base }); res.end(); return; }
+    if (base !== '/' && (url.pathname === '/' || url.pathname === base.slice(0, -1))) { res.writeHead(302, { Location: `${base}${url.search}` }); res.end(); return; }
     if (!url.pathname.startsWith(base)) throw new Error('Missing');
     let path = resolve(root, decodeURIComponent(url.pathname.slice(base.length)) || 'index.html');
     if (!path.startsWith(root + sep)) throw new Error('Invalid path');

@@ -15,7 +15,7 @@ Design conventions for the catalog, workspace, and browser previews.
 
 ## Artifact detail page
 
-Artifacts open with their file tree visible on desktop. Owners and collaborators with write access also see the code editor by default; readers start on the preview and can open any file. **Files** is always available, independently of the editor. **Show code** / **Hide code**, the editor close button, closing its last tab, and dragging its divider left control the code pane without discarding drafts. An explicit closed view survives reload. On phones, the file drawer starts closed to leave content usable. Libraries open on their README/source.
+Artifacts open with their file tree visible on desktop. Owners and collaborators with write access also see the code editor by default; readers start on the preview and can open any file. **Files** is always available, independently of the editor. The editor close button at the right end of its toolbar, closing its last tab, and dragging its divider left hide the code pane without discarding drafts. Opening a file reveals the code pane. An explicit closed view survives reload. On phones, the file drawer starts closed to leave content usable. Libraries open on their README/source.
 
 Simulation previews default to **Fit**: scale down and center the complete interface inside the available preview pane, recalculating when the pane or content changes. **Actual size** restores the authored layout without restarting the simulation. NetLogo interface editing temporarily uses Actual size. Keep saved source unchanged.
 

@@ -143,7 +143,6 @@ test('explicit library updates reproduce old output and protect edits, permissio
   await runAnswer(page, model, oldModelCommit, '7');
   await save(page.request, library, 'library.js', 'export const answer = 42;\n');
   await page.goto(`/#/project/${model.project.id}?edit=1`);
-  await page.locator('.dependency-details summary').click();
   await page.getByRole('button', { name: 'Update', exact: true }).click();
   await expect(dialog.getByLabel('Library version', { exact: true })).toHaveValue(library.commit);
   await expect(dialog.getByLabel('Library revision', { exact: true })).toHaveValue(library.commit);

@@ -221,6 +221,7 @@ onUnmounted(() => {
 </script>
 <template>
   <div class="app-shell">
+    <DemoToolbar v-if="demoMode" :prepare="prepareDemoAction" />
     <header class="topbar">
       <a href="#/" class="brand" aria-label="Comses lab home">
         <img :src="`${assetBase}branding/comses-mark.png`" alt="" width="44" height="44" />
@@ -240,13 +241,20 @@ onUnmounted(() => {
       </details>
       <button v-else-if="!demoMode" class="quiet sign-in" @click="requestSignIn()">Sign in</button>
     </header>
-    <DemoToolbar v-if="demoMode" :prepare="prepareDemoAction" />
     <div class="app-body">
       <nav class="app-nav" aria-label="Main navigation">
-        <a :href="destination('explore')" :aria-current="!project && space === 'explore' ? 'page' : undefined">Explore</a>
-        <span class="nav-section">Workspace</span>
-        <a :href="destination('mine', 'model')" :aria-current="!project && space === 'mine' && kind === 'model' ? 'page' : undefined">My artifacts</a>
-        <a :href="destination('mine', 'library')" :aria-current="!project && space === 'mine' && kind === 'library' ? 'page' : undefined">My libraries</a>
+        <a :href="destination('explore')" :aria-current="!project && space === 'explore' ? 'page' : undefined">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m16 8-2.5 5.5L8 16l2.5-5.5Z"/></svg>
+          <span>Explore</span>
+        </a>
+        <a :href="destination('mine', 'model')" :aria-current="!project && space === 'mine' && kind === 'model' ? 'page' : undefined">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          <span>My artifacts</span>
+        </a>
+        <a :href="destination('mine', 'library')" :aria-current="!project && space === 'mine' && kind === 'library' ? 'page' : undefined">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="5" height="16" rx="1"/><rect x="8" y="4" width="5" height="16" rx="1"/><path d="m16 4 5 1-3 15-5-1Z"/></svg>
+          <span>My libraries</span>
+        </a>
       </nav>
       <div class="app-content">
     <div v-if="error" role="alert" class="error-banner">

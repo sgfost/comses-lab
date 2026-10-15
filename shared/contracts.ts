@@ -25,7 +25,7 @@ export interface Project {
   dataOrigins: string[];
   forkedFrom: { projectId: string; commit: string } | null;
 }
-export type TemplateId = "commons" | "worker" | "python" | "netlogo" | "library-python" | "library-js";
+export type TemplateId = "ant-trails" | "predator-prey" | "galaxy-encounter" | "wave-tank" | "commons" | "worker" | "python" | "netlogo" | "library-python" | "library-js";
 export interface ProjectTemplate {
   kind: ProjectKind;
   id: TemplateId;

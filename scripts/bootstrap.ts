@@ -1,3 +1,4 @@
+import { showcaseTemplates } from "../shared/templates.ts";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -137,6 +138,7 @@ const ownerId = (
   }
 ).id;
 const examples = [
+  ...showcaseTemplates.map(t => ({ name: t.id, title: t.title, description: t.description, visibility: "public", directory: `examples/${t.id}`, entrypoint: t.entrypoint, files: t.files })),
   {
     name: "commons-garden",
     title: "The commons garden",

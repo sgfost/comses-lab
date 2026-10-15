@@ -918,22 +918,13 @@ async function viewVersion(commit: string, compare = false) {
   await loadRevision(commit, compare);
   if (narrow.value) await closeSidebar();
 }
-const sourceToggle = ref<HTMLButtonElement>();
 async function hideSource() {
   if (!(await finishNetlogo())) return;
   sourceViewChosen = true;
   sourceOpen.value = false;
   writeUrl();
   await nextTick();
-  sourceToggle.value?.focus();
-}
-async function toggleSource() {
-  if (sourceOpen.value) { await hideSource(); return; }
-  if (!(await finishNetlogo())) return;
-  sourceViewChosen = true;
-  sourceOpen.value = true;
-  if (!selected.value && tree.value?.files.length) await selectFile(tree.value.files[0]!.path);
-  writeUrl();
+  workspaceViews.value?.querySelector<HTMLButtonElement>('[data-view="files"]')?.focus();
 }
 async function restoreVersion() {
   if (!tree.value || !workingHead.value || !workingRef.value || restoring.value || buffers.dirty.value) return;
@@ -1159,7 +1150,6 @@ defineExpose({ stop, confirmLeave, refreshAccess });
       <span v-if="ancestor" class="ancestry-link">{{ project.forkedFrom ? "Based on" : "Extracted from" }} <a :href="`#/project/${ancestor.id}`">{{ ancestor.title }} ↗</a></span>
       <div class="workspace-actions">
         <LibraryUsage v-if="project.kind === 'library'" :project="project" :signed-in="!!user" @sign-in="emit('sign-in', $event)" />
-        <button v-if="project.entrypoint" ref="sourceToggle" class="quiet" :aria-pressed="sourceOpen" @click="toggleSource">{{ sourceOpen ? 'Hide code' : 'Show code' }}</button>
         <button class="quiet" :disabled="!tree || committing || buffers.dirty.value || netlogoAuthoring || netlogoPreparing" :title="buffers.dirty.value ? 'Save a version before forking' : undefined" @click="user ? showFork = true : emit('sign-in', () => showFork = true)">Fork</button>
         <button v-if="sourceOpen" class="quiet" :disabled="!tree || revisionLoading || committing || libraryBusy || buffers.dirty.value || netlogoAuthoring || netlogoPreparing" :title="buffers.dirty.value ? 'Save a version before extracting' : undefined" @click="user ? showExtraction = true : emit('sign-in', () => showExtraction = true)">Extract library</button>
         <button
@@ -1405,7 +1395,6 @@ defineExpose({ stop, confirmLeave, refreshAccess });
                 </button>
               </div>
               <div class="editor-actions">
-                <button v-if="project.entrypoint" class="icon-button" aria-label="Close code view" title="Close code view" @click="hideSource">×</button>
                 <button v-if="editable && selected" class="quiet" :disabled="committing" @click="deleteFile">Delete file</button>
                 <button
                   v-if="
@@ -1429,6 +1418,7 @@ defineExpose({ stop, confirmLeave, refreshAccess });
                 >
                   Compare
                 </button>
+                <button v-if="project.entrypoint" class="icon-button" aria-label="Close code view" title="Close code view" @click="hideSource">×</button>
               </div>
             </div>
             <div v-if="revisionLoading" class="empty" role="status">

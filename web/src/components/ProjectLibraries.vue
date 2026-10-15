@@ -129,14 +129,8 @@ onUnmounted(() => { read?.abort(); sourceRead?.abort(); catalogRead?.abort(); })
       <span v-if="pin.modified" class="pane-error">Installed files modified</span>
       <span v-if="pin.children.length" class="dependency-uses">Uses</span>
       <LibraryChildren :libraries="pin.children" />
-      <details class="dependency-details"><summary>Details</summary>
-        <code>{{ pin.commit }}</code>
-        <div class="dependency-location">{{ pin.directory }} · {{ pin.files.length }} files</div>
-        <div v-for="file in pin.files" :key="file.path" class="dependency-file"><code>{{ file.path }}</code></div>
         <div v-if="editable" class="library-actions"><button class="quiet" :disabled="!canEdit || !pin.project || pin.modified" @click="open(pin)">Update</button><button class="quiet" :disabled="!canEdit || pin.modified" @click="open(pin, true)">Remove</button></div>
-      </details>
     </article>
-    <a href="#/explore/libraries" class="browse-libraries">Browse libraries <span aria-hidden="true">→</span></a>
     <dialog ref="dialog" class="login-dialog library-dialog" @cancel.prevent="close" @click="$event.target === dialog && close()">
       <form v-if="formOpen" @submit.prevent="submit">
         <button class="close" type="button" :disabled="busy" aria-label="Close library dialog" @click="close">×</button>

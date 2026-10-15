@@ -23,7 +23,7 @@ test('visitors see files immediately and can open and dismiss code without editi
   await page.getByRole('button', { name: 'Close code view', exact: true }).click();
   await expect(page.locator('.code-console')).toBeHidden();
   await expect(page.getByRole('tree', { name: 'Source files' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Show code', exact: true })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Files', exact: true })).toBeFocused();
   await page.getByRole('link', { name: 'My artifacts', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Sign in to your workspace' })).toBeVisible();
   await expect(page.locator('.model-row')).toHaveCount(0);
@@ -55,7 +55,7 @@ test('owners edit by default; closing tabs or dragging closes code without losin
   await page.mouse.move(pane.x + 20, divider.y + 20, { steps: 10 });
   await page.mouse.up();
   await expect(page.locator('.code-console')).toBeHidden();
-  await page.getByRole('button', { name: 'Show code', exact: true }).click();
+  await page.getByRole('treeitem', { name: 'README.md', exact: false }).click();
   await expect(page.getByLabel('Source code', { exact: true })).toHaveText('Draft survives closing code.');
   expect((await (await page.request.get(`/api/projects/${project.id}/tree?ref=refs/heads/main`)).json()).commit).toBe(commit);
 });

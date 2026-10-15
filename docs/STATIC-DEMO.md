@@ -44,7 +44,7 @@ Serve over HTTPS, or localhost during development; browser storage coordination 
 
 ## What visitors can do
 
-- Browse/search bundled models and libraries; run JavaScript, worker, Python/Pyodide, and NetLogo examples.
+- Browse five examples: Ant trails and Predator–prey landscape (Python/Pyodide workers), Galaxy encounter and Wave interference (JavaScript/Canvas), and NetLogo walks. Browser kit and Agent grid remain as the two library examples.
 - Fork an example into their own browser workspace, or create a project from a template.
 - Edit files with live preview; autosave drafts; save versions, view history/diffs, and restore an earlier version.
 - Create/extract libraries, install exact local versions, inspect nested dependencies, and update/remove unchanged installed files.
