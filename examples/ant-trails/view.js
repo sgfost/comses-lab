@@ -49,7 +49,7 @@ worker=new Worker(url);
 function fail(message){running=false;busy=false;$('status').textContent=message;for(const id of ['play','step','reset'])$(id).disabled=true;}
 worker.onerror=event=>fail(event.message||'Python worker failed');
 worker.onmessage=({data})=>{
-  if(data.type==='ready'){URL.revokeObjectURL(url);ready=true;for(const id of ['play','step','reset'])$(id).disabled=false;send('reset',{seed:42,population:Number($('population').value)});}
+  if(data.type==='ready'){console.info('Python interpreter ready; agent rules execute in model.py');URL.revokeObjectURL(url);ready=true;for(const id of ['play','step','reset'])$(id).disabled=false;send('reset',{seed:42,population:Number($('population').value)});}
   else if(data.type==='state'){busy=false;draw(data.state);}
   else if(data.type==='error')fail(data.text);
 };

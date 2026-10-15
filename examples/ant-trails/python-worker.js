@@ -12,5 +12,4 @@ onmessage = ({ data }) => {
     postMessage({ type: 'state', state });
   } catch (error) { postMessage({ type: 'error', text: String(error) }); }
 };
-console.info('Python interpreter ready; agent rules execute in model.py');
 postMessage({ type: 'ready' });
