@@ -246,6 +246,32 @@ const visibleFiles = computed(() => {
   }
   return [...paths].sort().map(path => ({ path }));
 });
+function isNotebook(path: string, content: string) {
+  // Match Marimo's discovery markers without executing Python.
+  return /\.py$/i.test(path) && content.includes("import marimo") && content.includes("marimo.App");
+}
+const savedNotebooks = ref(new Set<string>());
+watch(tree, async (snapshot, _, onCleanup) => {
+  savedNotebooks.value = new Set();
+  if (!snapshot) return;
+  const controller = new AbortController();
+  onCleanup(() => controller.abort());
+  await Promise.all(snapshot.files.filter(file => /\.py$/i.test(file.path)).map(async ({ path }) => {
+    try {
+      const file = await api<{ content: string }>(
+        `${projectPath}/file?commit=${snapshot.commit}&path=${encodeURIComponent(path)}`,
+        { signal: controller.signal },
+      );
+      if (!controller.signal.aborted && isNotebook(path, file.content)) savedNotebooks.value.add(path);
+    } catch {
+      // Unreadable files stay out of discovery; opening source still reports errors.
+    }
+  }));
+});
+const notebookFiles = computed(() => visibleFiles.value.filter(({ path }) => {
+  const file = buffers.files.get(path);
+  return file ? isNotebook(path, file.content ?? "") : savedNotebooks.value.has(path);
+}));
 async function confirmLeave() {
   if (committing.value || marimoSaving.value || restoring.value || metadataBusy.value || libraryBusy.value) return false;
   if (!(await finishMarimo()) || !(await finishNetlogo())) return false;
@@ -1451,7 +1477,7 @@ defineExpose({ stop, confirmLeave, refreshAccess });
                 </button>
               </div>
               <div class="editor-actions">
-                <button v-if="/\.py$/i.test(selected) && /(?:import marimo|from marimo)/.test(source) && !marimoEditing" class="quiet" @click="notebookPath = selected; openNotebook(false)">Open notebook</button>
+                <button v-if="isNotebook(selected, source) && !marimoEditing" class="quiet" @click="notebookPath = selected; openNotebook(false)">Open notebook</button>
                 <button v-if="editable && selected" class="quiet" :disabled="committing || marimoEditing" @click="deleteFile">Delete file</button>
                 <button
                   v-if="
@@ -1612,11 +1638,11 @@ defineExpose({ stop, confirmLeave, refreshAccess });
         />
         <section v-if="project.entrypoint || notebookPath" class="preview-pane">
           <div class="pane-heading preview-toolbar">
-            <select v-if="visibleFiles.some(file => /\.py$/i.test(file.path))" v-model="notebookPath" :disabled="marimoEditing" aria-label="Preview file" @change="openNotebook(false)">
+            <select v-if="notebookFiles.length" v-model="notebookPath" :disabled="marimoEditing" aria-label="Preview file" @change="openNotebook(false)">
               <option value="">{{ project.entrypoint || 'Choose a notebook' }}</option>
-              <option v-for="file in visibleFiles.filter(file => /\.py$/i.test(file.path) && file.path !== project.entrypoint)" :key="file.path" :value="file.path">{{ file.path }}</option>
+              <option v-for="file in notebookFiles.filter(file => file.path !== project.entrypoint)" :key="file.path" :value="file.path">{{ file.path }}</option>
             </select>
-            <button v-if="/\.py$/i.test(previewPath) && editable" class="quiet" :disabled="marimoSaving || launching || committing || metadataEditing" @click="openNotebook(!marimoEditing)">{{ marimoEditing ? 'View notebook' : 'Edit notebook' }}</button>
+            <button v-if="notebookFiles.some(file => file.path === previewPath) && editable" class="quiet" :disabled="marimoSaving || launching || committing || metadataEditing" @click="openNotebook(!marimoEditing)">{{ marimoEditing ? 'View notebook' : 'Edit notebook' }}</button>
             <span>Preview <span v-if="launch?.draft" class="preview-draft">· Draft</span></span>
             <select v-model="effectivePreviewSizing" aria-label="Preview size" class="preview-size" :disabled="netlogoAuthoring || /\.py$/i.test(previewPath)" title="Fit the simulation to this pane, or display it at its original size">
               <option value="fit">Fit</option>

@@ -7,6 +7,7 @@ test('Marimo runs, edits and persists entirely in the static demo', async ({ pag
   await page.goto('./#/project/marimo');
   const frame = page.frameLocator('iframe[title="Artifact preview"]');
   await expect(frame.getByText(/^Final population:/)).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByLabel('Preview file', { exact: true }).locator('option')).toHaveText(['notebook.py']);
   const initial = await frame.getByText(/^Final population:/).innerText();
   await frame.getByRole('slider').focus();
   await page.keyboard.press('ArrowRight');
