@@ -24,6 +24,9 @@ export function useModelPreview(options: {
   signedIn: () => boolean;
   signIn: () => void;
   changes: () => FileChange[];
+  entrypoint?: () => string;
+  marimoEdit?: () => boolean;
+  marimoSave?: (source: string) => void;
   netlogoChanged?: () => void;
 }) {
   const launch = ref<Launch | null>(null);
@@ -145,7 +148,9 @@ export function useModelPreview(options: {
     if (!isRuntimeEvent(event.data) || event.data.launchId !== active.id)
       return;
     const data = event.data;
+    if (data.type.startsWith("marimo-") && launch.value?.runtime !== "marimo") return;
     if (data.type.startsWith("netlogo-") && launch.value?.runtime !== "netlogo") return;
+    if (data.type === "marimo-save" && launch.value?.runtime === "marimo") { options.marimoSave?.(data.source); return; }
     if (data.type === "ready") {
       if (!active.ready) {
         active.ready = true;
@@ -155,7 +160,7 @@ export function useModelPreview(options: {
     } else if (data.type === "netlogo-ready") netlogoReady.value = true;
     else if (data.type === "netlogo-change") options.netlogoChanged?.();
     else if (data.type === "netlogo-open-required") netlogoNotice.value = data.text;
-    else if (data.type === "netlogo-export" && pendingExport?.id === data.requestId) {
+    else if ((data.type === "netlogo-export" || data.type === "marimo-export") && pendingExport?.id === data.requestId) {
       const pending = pendingExport;
       pendingExport = undefined;
       clearTimeout(pending.timer);
@@ -187,7 +192,7 @@ export function useModelPreview(options: {
         active = {
           id: launch.value.id,
           window: element.contentWindow,
-          origin: !demoMode && launch.value.runtime === "netlogo" ? new URL(launch.value.url).origin : "null",
+          origin: !demoMode && (launch.value.runtime === "netlogo" || launch.value.runtime === "marimo") ? new URL(launch.value.url).origin : "null",
           ready: false,
           started: performance.now(),
           count: 0,
@@ -215,7 +220,7 @@ export function useModelPreview(options: {
       const acknowledge = (event: MessageEvent) => {
         if (
           event.source !== child ||
-          event.origin !== (!demoMode && value.runtime === "netlogo" ? new URL(value.url).origin : "null") ||
+          event.origin !== (!demoMode && (value.runtime === "netlogo" || value.runtime === "marimo") ? new URL(value.url).origin : "null") ||
           event.ports.length ||
           event.data?.type !== "stopped"
         )
@@ -301,6 +306,17 @@ export function useModelPreview(options: {
       catch (cause) { clearTimeout(timer); pendingExport = undefined; reject(cause); }
     });
   }
+  function exportMarimo(): Promise<string> {
+    if (pendingExport || !active || launch.value?.runtime !== 'marimo') return Promise.reject(new Error('Notebook is not ready to save'));
+    return new Promise((resolve, reject) => {
+      const id = crypto.randomUUID();
+      const timer = setTimeout(() => {
+        if (pendingExport?.id === id) { pendingExport = undefined; reject(new Error('Notebook did not finish saving. Keep it open and retry.')); }
+      }, 20000);
+      pendingExport = { id, resolve, reject, timer };
+      active!.window.postMessage({ channel: RUNTIME_CHANNEL, version: RUNTIME_VERSION, launchId: active!.id, type: 'marimo-export-request', requestId: id }, active!.origin === 'null' ? '*' : active!.origin);
+    });
+  }
   const run = () => start(options.changes());
   const runSaved = () => start([]);
   async function start(changes: FileChange[]) {
@@ -319,7 +335,7 @@ export function useModelPreview(options: {
     try {
       const result = await api<Launch>(
         `/projects/${options.projectId}/launch`,
-        { method: "POST", body: JSON.stringify({ commit, ...(changes.length ? { changes } : {}) }) },
+        { method: "POST", body: JSON.stringify({ commit, entrypoint: options.entrypoint?.(), edit: options.marimoEdit?.(), ...(changes.length ? { changes } : {}) }) },
       );
       if (disposed || request !== generation || options.commit() !== commit) {
         await revoke(result);
@@ -359,5 +375,5 @@ export function useModelPreview(options: {
     window.removeEventListener("pageshow", restore);
     teardown();
   });
-  return { launch, launching, stopping, error, lines, activity, run, runSaved, stop, cancelPending, netlogoReady, netlogoNotice, exportNetlogo, setNetlogoAuthoring, waitForNetlogo, setPreviewFit };
+  return { exportMarimo, launch, launching, stopping, error, lines, activity, run, runSaved, stop, cancelPending, netlogoReady, netlogoNotice, exportNetlogo, setNetlogoAuthoring, waitForNetlogo, setPreviewFit };
 }

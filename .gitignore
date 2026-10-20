@@ -22,3 +22,5 @@ test-results/
 playwright-report/
 
 web/dist-demo/
+
+runtime/vendor/marimo/*/static/

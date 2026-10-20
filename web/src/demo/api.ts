@@ -122,7 +122,7 @@ export async function demoApi<T>(path: string, init: RequestInit = {}): Promise<
         const patch = [...new Set([...Object.keys(before), ...Object.keys(v.files)])].filter(path => before[path] !== v.files[path]).map(path => createTwoFilesPatch(`a/${path}`, `b/${path}`, before[path] ?? '', v.files[path] ?? '')).join('\n');
         return { commit: v.commit, base: previous?.commit ?? null, patch };
       }
-      if (action === 'launch' && method === 'POST') { const v = version(p, body.commit); return createDemoLaunch(p.project, v.commit, changes(v.files, body.changes ?? []), !!body.changes?.length); }
+      if (action === 'launch' && method === 'POST') { const v = version(p, body.commit); return createDemoLaunch({ ...p.project, entrypoint: body.entrypoint ?? p.project.entrypoint }, v.commit, changes(v.files, body.changes ?? []), !!body.changes?.length, body.edit === true && ['write', 'admin'].includes(p.project.permission)); }
       if (action === 'draft' && method === 'GET') return { draft: p.draft };
       if (action === 'libraries' && method === 'GET') {
         const d = query.get('draft') === '1' ? p.draft : null;

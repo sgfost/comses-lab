@@ -1,0 +1,35 @@
+import { test, expect } from '@playwright/test';
+
+test('Marimo runs, edits and persists entirely in the static demo', async ({ page }) => {
+  test.setTimeout(180_000);
+  const backendRequests: string[] = [];
+  page.on('request', request => { if (new URL(request.url()).pathname.includes('/api/')) backendRequests.push(request.url()); });
+  await page.goto('./#/project/marimo');
+  const frame = page.frameLocator('iframe[title="Artifact preview"]');
+  await expect(frame.getByText(/^Final population:/)).toBeVisible({ timeout: 90_000 });
+  const initial = await frame.getByText(/^Final population:/).innerText();
+  await frame.getByRole('slider').focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(frame.getByText(/^Final population:/)).not.toHaveText(initial);
+  const runtime = page.frames().find(frame => frame.url().startsWith('blob:'))!;
+  expect(await runtime.evaluate(() => { try { void parent.document.body; return false; } catch { return true; } })).toBe(true);
+  expect(await runtime.evaluate(() => { try { indexedDB.open('probe'); return false; } catch { return true; } })).toBe(true);
+  await page.getByRole('button', { name: 'Fork', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Fork artifact', exact: true });
+  await dialog.getByLabel('Title', { exact: true }).fill('Browser notebook');
+  await dialog.getByRole('button', { name: 'Fork artifact', exact: true }).click();
+  await expect(page).toHaveURL(/project\/local-/);
+  await page.getByRole('button', { name: 'Edit notebook', exact: true }).click();
+  const cell = frame.locator('.cm-content').first();
+  await expect(cell).toContainText('from model import simulate', { timeout: 90_000 });
+  await cell.click();
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+  await page.keyboard.insertText('import marimo as mo\nfrom model import simulate\n# Saved from browser cells');
+  await page.getByRole('button', { name: 'Save version', exact: true }).click();
+  await expect(page.getByText('Version saved', { exact: true })).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Edit notebook', exact: true }).click();
+  await expect(frame.locator('.cm-content').first()).toContainText('# Saved from browser cells', { timeout: 90_000 });
+  expect(backendRequests).toEqual([]);
+  await page.screenshot({ path: 'test-results/marimo-static-demo.png' });
+});

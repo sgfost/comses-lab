@@ -1,9 +1,11 @@
+import { isMarimo, marimoDocument, marimoAssets, MARIMO_VERSION } from './marimo.ts';
 import { Hono } from "hono";
 import { randomBytes } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { installPreviewFit } from "./preview-fit.js";
 import { installBridge } from "./bridge.js";
-import { assertNetLogoOrigins, isNetLogo, netLogoDocument, netLogoOrigin, netLogoPlayer } from "./netlogo.ts";
+import { RuntimeConfigurationError, assertRuntimeOrigins, isolatedRuntimeOrigin } from "./origin.ts";
+import { isNetLogo, netLogoDocument, netLogoPlayer } from "./netlogo.ts";
 import { MAX_RUNTIME_TEXT, MAX_RUNTIME_EVENTS_PER_SECOND } from "../shared/runtime.ts";
 import { settings } from "../server/config.ts";
 import type { Launch } from "../shared/contracts.ts";
@@ -18,6 +20,7 @@ type Snapshot = {
   entrypoint: string;
   files: Map<string, Buffer>;
   origin: string;
+  edit: boolean;
 };
 const snapshots = new Map<string, Snapshot>();
 function samePrincipal(a: LaunchPrincipal, b: LaunchPrincipal) {
@@ -33,6 +36,7 @@ export function createLaunch(input: {
   files: Map<string, Buffer>;
   principal: LaunchPrincipal;
   dataOrigins: readonly string[];
+  edit?: boolean;
 }): Launch {
   for (const [id, snapshot] of snapshots)
     if (snapshot.launch.expiresAt <= Date.now()) snapshots.delete(id);
@@ -40,23 +44,27 @@ export function createLaunch(input: {
     throw new Error("Too many active previews. Stop a preview and retry.");
   const id = randomBytes(32).toString("base64url");
   const netlogo = isNetLogo(input.entrypoint);
-  if (netlogo) {
-    assertNetLogoOrigins(settings.appOrigin, settings.runtimeOrigin);
-    assertNetLogoOrigins(settings.forgejoUrl, settings.runtimeOrigin);
+  const marimo = isMarimo(input.entrypoint);
+  if (marimo && !existsSync(new URL("index.html", marimoAssets)))
+    throw new RuntimeConfigurationError("Marimo assets are missing. Run npm run setup:marimo on the Lab server.");
+  if (netlogo || marimo) {
+    assertRuntimeOrigins(settings.appOrigin, settings.runtimeOrigin);
+    assertRuntimeOrigins(settings.forgejoUrl, settings.runtimeOrigin);
   }
-  const origin = netlogo ? netLogoOrigin(id, settings.runtimeOrigin) : settings.runtimeOrigin;
+  const origin = netlogo || marimo ? isolatedRuntimeOrigin(id, settings.runtimeOrigin) : settings.runtimeOrigin;
   const url = `${origin}/preview/${id}/${input.entrypoint.split("/").map(encodeURIComponent).join("/")}?lab-entry=1${netlogo ? "&disableWorkInProgress" : ""}`;
   const launch = {
     id,
     commit: input.commit,
     url,
     ...(netlogo ? { runtime: "netlogo" as const, standaloneUrl: `${url}&standalone=1` } : {}),
+    ...(marimo ? { runtime: "marimo" as const } : {}),
     expiresAt: Date.now() + 10 * 60_000,
   };
   snapshots.set(id, {
     launch, projectId: input.projectId, entrypoint: input.entrypoint,
     files: new Map([...input.files].map(([path, bytes]) => [path, Buffer.from(bytes)])),
-    principal: { ...input.principal }, dataOrigins: [...input.dataOrigins], origin,
+    principal: { ...input.principal }, dataOrigins: [...input.dataOrigins], origin, edit: input.edit ?? false,
   });
   return { ...launch };
 }
@@ -115,8 +123,8 @@ runtime.use("*", async (c, next) => {
     ? [...snapshots.values()].find((value) => value.launch.expiresAt > Date.now() && new URL(value.origin).host === host)
     : undefined);
   // Expired capability URLs still reach the ordinary "Preview expired" response.
-  const expiredNetLogoHost = !snapshot && id && host === new URL(netLogoOrigin(id, settings.runtimeOrigin)).host;
-  if (snapshot ? host !== new URL(snapshot.origin).host : host !== new URL(settings.runtimeOrigin).host && !hostSnapshot && !expiredNetLogoHost)
+  const expiredIsolatedHost = !snapshot && id && host === new URL(isolatedRuntimeOrigin(id, settings.runtimeOrigin)).host;
+  if (snapshot ? host !== new URL(snapshot.origin).host : host !== new URL(settings.runtimeOrigin).host && !hostSnapshot && !expiredIsolatedHost)
     return c.text("Invalid host", 403);
   if (c.req.header("sec-fetch-dest") === "serviceworker" || c.req.header("service-worker") === "script")
     return c.text("Service workers are not supported", 403);
@@ -127,18 +135,35 @@ runtime.use("*", async (c, next) => {
   // Blob workers inherit the launch document's policy; data permission affects only fetches.
   const dataOrigins = hostSnapshot?.dataOrigins ?? [];
   const netlogo = !!hostSnapshot && isNetLogo(hostSnapshot.entrypoint);
-  if (netlogo) {
+  const marimo = !!hostSnapshot && isMarimo(hostSnapshot.entrypoint);
+  if (netlogo || marimo) {
     c.header("Origin-Agent-Cluster", "?1");
     c.header("Cross-Origin-Opener-Policy", "same-origin");
     c.header("Permissions-Policy", "document-domain=(), camera=(), microphone=(), geolocation=(), usb=(), serial=(), hid=(), payment=()");
   }
   c.header(
     "Content-Security-Policy",
-    netlogo
+    marimo
+      ? `default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'self' blob: https://cdn.jsdelivr.net; style-src 'unsafe-inline' 'self'; img-src data: blob: 'self'; font-src data: 'self'; connect-src 'self' https://cdn.jsdelivr.net https://wasm.marimo.app https://pypi.org https://files.pythonhosted.org ${dataOrigins.join(" ")}; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors ${settings.appOrigin}; sandbox allow-scripts allow-same-origin allow-downloads`
+      : netlogo
       ? `default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'self' ${settings.runtimeOrigin}; style-src 'unsafe-inline' 'self'; img-src data: blob: 'self'; font-src data: 'self'; connect-src ${["'self'", settings.runtimeOrigin, ...dataOrigins].join(" ")}; worker-src blob:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors ${settings.appOrigin}; sandbox allow-scripts allow-same-origin allow-downloads allow-modals allow-forms`
       : `default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval' ${settings.runtimeOrigin}; style-src 'unsafe-inline' ${settings.runtimeOrigin}; img-src data: blob: ${settings.runtimeOrigin}; font-src ${settings.runtimeOrigin}; connect-src ${[settings.runtimeOrigin, ...dataOrigins].join(" ")}; worker-src blob: ${settings.runtimeOrigin}; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors ${settings.appOrigin}; sandbox allow-scripts`,
   );
   await next();
+});
+runtime.get(`/vendor/marimo/${MARIMO_VERSION}/assets/:file`, (c) => {
+  const file = c.req.param('file');
+  if (!/^[A-Za-z0-9_.-]+$/.test(file)) return c.text('Not found', 404);
+  try {
+    const bytes = readFileSync(new URL(`assets/${file}`, marimoAssets));
+    c.header('Content-Type', types[file.split('.').pop()!] ?? (file.endsWith('.woff2') ? 'font/woff2' : 'application/octet-stream'));
+    return c.body(new Uint8Array(bytes));
+  } catch { return c.text('Marimo assets missing. Run npm run setup:marimo.', 404); }
+});
+runtime.get('/bridge/:id/files.json', (c) => {
+  const snapshot = snapshotFor(c.req.param('id'));
+  if (!snapshot || !isMarimo(snapshot.entrypoint)) return c.text('Preview expired', 404);
+  return c.json(Object.fromEntries([...snapshot.files].map(([path, bytes]) => [path, bytes.toString('base64')])));
 });
 const pyodideFiles = new Set([
   "pyodide.mjs", "pyodide.asm.js", "pyodide.asm.wasm",
@@ -194,6 +219,11 @@ runtime.get("/preview/:id/*", (c) => {
     c.header("Content-Type", "text/html; charset=utf-8");
     return c.body(netLogoDocument({ launchId: snapshot.launch.id, appOrigin: settings.appOrigin,
       path, source: file.toString("utf8"), standalone: c.req.query("standalone") === "1" }));
+  }
+  if (path === snapshot.entrypoint && isMarimo(path) && c.req.query("lab-entry") === "1") {
+    c.header('Content-Type', 'text/html; charset=utf-8');
+    return c.body(marimoDocument({ launchId: snapshot.launch.id, appOrigin: settings.appOrigin,
+      path, source: file.toString('utf8'), edit: snapshot.edit }));
   }
   const type = types[path.split(".").pop()!.toLowerCase()] ?? "application/octet-stream";
   c.header(

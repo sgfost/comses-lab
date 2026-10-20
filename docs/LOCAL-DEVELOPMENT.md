@@ -8,6 +8,7 @@ From the repository root:
 npm ci
 npx playwright install chromium
 npm run setup
+npm run setup:marimo
 npm run forgejo
 npm run bootstrap
 npm run dev
@@ -110,7 +111,7 @@ Browser: Playwright 1.63.0 Chromium / Chrome for Testing 153.0.8010.12. Tests co
 
 The current app supports exact-revision source, branch/tag selection, history and diffs, browser file editing/commits with stale-save protection, template creation, exact-revision forks, group permissions, data-origin controls, and isolated HTML/JS/Pyodide previews with console output. Bootstrap adds Random walks (JavaScript worker), Heat diffusion (Python) and a private group example alongside the original public/private examples; existing repositories and metadata are preserved. Models have their own controls and code, with no mandatory Lab SDK. See [runtime behavior and limits](../runtime/README.md) and [source API documentation](API.md).
 
-Saved results, frozen releases and marimo integration remain deferred. Scoped agent credentials, repository-specific Git credentials, and combined scoped-grant revocation testing are now included. Arbitrary main-thread code is not promised to be interruptible; supported worker paths have explicit stop/reset checks.
+Saved results and frozen releases remain deferred. Scoped agent credentials, repository-specific Git credentials, and combined scoped-grant revocation testing are now included. Arbitrary main-thread code is not promised to be interruptible; supported worker paths have explicit stop/reset checks.
 
 After the isolated browser suite has initialized its test state and stopped native services, run the durable launch/session race checks separately:
 
@@ -121,3 +122,9 @@ LAB_INSTANCE=test-foundation node e2e/launch-session.mjs
 This refuses development instances and already-running APIs. It verifies logout, expiry, and replacement while a real source response is delayed, then checks valid-session recovery and revocation. Use the same `LAB_INSTANCE` as your initialized isolated test state.
 
 Forgejo is pinned to **15.0.9 LTS**, verified against the [official release list](https://forgejo.org/releases/15.x/) on October 1, 2026. It remains sign-in protected; anonymous Lab public-source reads use a dedicated unprivileged reader account. Direct Forgejo access uses the generated local account credentials.
+
+## Marimo notebooks
+
+Choose **New artifact → Marimo notebook**, or add an ordinary Marimo `.py` file alongside a model. Use **Open notebook** in the source toolbar or the preview file selector. **Edit notebook** opens Marimo’s cell editor; edits autosave to Lab drafts, and **Save version** records the latest notebook source in Git. **View notebook** returns to the interactive app. The starter imports `model.py` and reruns its population plot when the growth slider changes.
+
+Run `npm run setup:marimo` to install the pinned frontend assets. First launch downloads Python and compatible packages, so it requires internet access. Python files and data in the project are available under `/marimo`; generated files remain local to the running preview. See [runtime behavior](../runtime/README.md#marimo-notebooks).

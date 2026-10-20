@@ -247,17 +247,17 @@ const visibleFiles = computed(() => {
   return [...paths].sort().map(path => ({ path }));
 });
 async function confirmLeave() {
-  if (committing.value || restoring.value || metadataBusy.value || libraryBusy.value) return false;
-  if (!(await finishNetlogo())) return false;
+  if (committing.value || marimoSaving.value || restoring.value || metadataBusy.value || libraryBusy.value) return false;
+  if (!(await finishMarimo()) || !(await finishNetlogo())) return false;
   if (!metadataEditing.value && await flushDraft()) return true;
   return await discardDialog.value?.confirm() ?? false;
 }
 function updateSource(content: string) {
   const file = buffers.files.get(selected.value);
-  if (editable.value && !netlogoAuthoring.value && !netlogoPreparing.value && file) file.content = content;
+  if (editable.value && !(marimoEditing.value && selected.value === previewPath.value) && !netlogoAuthoring.value && !netlogoPreparing.value && file) file.content = content;
 }
 function beforeUnload(event: BeforeUnloadEvent) {
-  if (netlogoAuthoring.value || netlogoDirty.value || netlogoSaving.value || (draftReady.value && JSON.stringify(draftChanges.value) !== acknowledged) || committing.value || libraryBusy.value || metadataEditing.value) { event.preventDefault(); event.returnValue = ""; }
+  if (marimoEditing.value || netlogoAuthoring.value || netlogoDirty.value || netlogoSaving.value || (draftReady.value && JSON.stringify(draftChanges.value) !== acknowledged) || committing.value || libraryBusy.value || metadataEditing.value) { event.preventDefault(); event.returnValue = ""; }
 }
 function createFile() {
   if (!editable.value || committing.value) return;
@@ -272,7 +272,7 @@ function createFile() {
   void openSidebarFile(path);
 }
 async function discardFile(path: string) {
-  if (committing.value || !(await discardDialog.value?.confirm(`Unsaved changes to ${path} will be lost.`))) return;
+  if (marimoEditing.value || committing.value || !(await discardDialog.value?.confirm(`Unsaved changes to ${path} will be lost.`))) return;
   buffers.discard(path);
   if (selected.value === path) {
     if (visibleFiles.value.some(file => file.path === path)) void selectFile(path);
@@ -280,7 +280,7 @@ async function discardFile(path: string) {
   }
 }
 function deleteFile() {
-  if (!editable.value || committing.value || !selected.value) return;
+  if (!editable.value || committing.value || marimoEditing.value || !selected.value) return;
   const path = selected.value;
   buffers.remove(path);
   openFiles.value = openFiles.value.filter(item => item !== path);
@@ -297,6 +297,7 @@ function writeUrl() {
   emit("revision");
 }
 async function commitChanges(andRun = false) {
+  if (!(await finishMarimo())) return;
   if (netlogoAuthoring.value && !(await finishNetlogo())) return;
   if (!editable.value || committing.value || !tree.value || !buffers.dirty.value && !pendingSave.value) return;
   let submitted = buffers.snapshot();
@@ -381,7 +382,7 @@ async function inspectBranch() {
   finally { inspecting.value = false; }
 }
 function editMetadata() {
-  if (revisionLoading.value || committing.value || accessBlocked.value) return;
+  if (revisionLoading.value || committing.value || marimoEditing.value || accessBlocked.value) return;
   Object.assign(metadata, { title: props.project.title, description: props.project.description, license: props.project.license, entrypoint: props.project.entrypoint });
   metadataOrigins.value = props.project.dataOrigins.join("\n");
   metadataVersion = props.project.metadataVersion;
@@ -432,11 +433,51 @@ const revisionInput = ref("");
 const workPanes = ref<HTMLElement>();
 const panesWidth = ref(900);
 const paneHeight = ref(700);
+const notebookPath = ref("");
+const previewPath = computed(() => notebookPath.value || props.project.entrypoint);
+const marimoEditing = ref(false);
+const marimoSaving = ref(false);
+let marimoSource = "";
+let marimoPath = "";
+let marimoRevision = 0;
+const notebookError = ref("");
+async function finishMarimo(): Promise<boolean> {
+  if (!marimoEditing.value || !launch.value) return true;
+  if (marimoSaving.value) return false;
+  marimoSaving.value = true;
+  try {
+    const id = launch.value.id, path = previewPath.value;
+    const content = await exportMarimo();
+    const file = buffers.files.get(path);
+    if (path !== marimoPath || revisionGeneration !== marimoRevision || !editable.value || id !== launch.value?.id || path !== previewPath.value || !file || file.content !== marimoSource)
+      throw new Error('Notebook source changed. Keep this notebook open and resolve the source conflict.');
+    file.content = content;
+    marimoSource = content;
+    if (!(await flushDraft())) return false;
+    return true;
+  } catch (cause) { notebookError.value = (cause as Error).message; return false; }
+  finally { marimoSaving.value = false; }
+}
+async function openNotebook(edit = false) {
+  if (edit && metadataEditing.value) return;
+  clearTimeout(previewTimer);
+  if (!(await finishMarimo())) return;
+  await stopPreview();
+  marimoEditing.value = edit && editable.value;
+  notebookError.value = "";
+  if (marimoEditing.value) {
+    await selectFile(previewPath.value);
+    marimoSource = buffers.files.get(previewPath.value)?.content ?? "";
+    marimoPath = previewPath.value;
+    marimoRevision = revisionGeneration;
+  }
+  await runPreview();
+}
 const iframe = ref<HTMLIFrameElement>();
 const livePreview = ref(true);
 const previewSizing = ref("fit");
 const effectivePreviewSizing = computed({
-  get: () => netlogoAuthoring.value ? "actual" : previewSizing.value,
+  get: () => netlogoAuthoring.value || /\.py$/i.test(previewPath.value) ? "actual" : previewSizing.value,
   set: (value: string) => { previewSizing.value = value; },
 });
 const draftChanges = computed<FileChange[]>(() => buffers.snapshot().map(file => file.content === null
@@ -457,6 +498,7 @@ const {
   netlogoReady,
   netlogoNotice,
   exportNetlogo,
+  exportMarimo,
   setNetlogoAuthoring,
   waitForNetlogo,
   setPreviewFit,
@@ -467,6 +509,19 @@ const {
   signedIn: () => !!props.user,
   signIn: () => emit("sign-in"),
   changes: () => draftChanges.value,
+  entrypoint: () => previewPath.value,
+  marimoEdit: () => marimoEditing.value && editable.value,
+  marimoSave: content => {
+    if (!marimoEditing.value || !editable.value || committing.value) return;
+    const file = buffers.files.get(previewPath.value);
+    if (previewPath.value !== marimoPath || revisionGeneration !== marimoRevision || !file || file.content !== marimoSource) {
+      notebookError.value = "Source changed outside the notebook. Reopen the notebook before saving further edits.";
+      return;
+    }
+    file.content = content;
+    marimoSource = content;
+    if (launch.value) launch.value.draft = true;
+  },
   netlogoChanged: () => {
     if (!netlogoAuthoring.value || netlogoPreparing.value || !editable.value) return;
     netlogoEdits++;
@@ -476,7 +531,7 @@ const {
   },
 });
 watch(effectivePreviewSizing, mode => setPreviewFit(mode === "fit"), { immediate: true });
-const isNetlogo = computed(() => /\.nlogox?$/i.test(props.project.entrypoint));
+const isNetlogo = computed(() => /\.nlogox?$/i.test(previewPath.value));
 async function captureNetlogo(force = false): Promise<boolean> {
   clearTimeout(netlogoTimer);
   if (capturingNetlogo) { if (!(await capturingNetlogo)) return false; return captureNetlogo(force); }
@@ -519,9 +574,9 @@ async function finishNetlogo() {
   }
   return true;
 }
-async function run() { if (await finishNetlogo()) await runPreview(); }
-async function runSaved() { if (await finishNetlogo()) await runSavedPreview(); }
-async function stop() { if (await finishNetlogo()) await stopPreview(); }
+async function run() { if (await finishMarimo() && await finishNetlogo()) await runPreview(); }
+async function runSaved() { if (await finishMarimo() && await finishNetlogo()) await runSavedPreview(); }
+async function stop() { if (await finishMarimo() && await finishNetlogo()) { marimoEditing.value = false; await stopPreview(); } }
 async function editNetlogoInterface() {
   if (!editable.value || !netlogoReady.value || netlogoSaving.value || netlogoPreparing.value) return;
   netlogoError.value = "";
@@ -606,13 +661,13 @@ const canRun = computed(
   () =>
     !revisionLoading.value &&
     !accessBlocked.value &&
-    !!tree.value?.files.some((file) => file.path === props.project.entrypoint),
+    !!tree.value && visibleFiles.value.some((file) => file.path === previewPath.value),
 );
 let automaticPreview = "";
 watch(
   [() => props.user?.id, canRun, () => props.project.entrypoint],
   () => {
-    if (!props.user || !canRun.value) return;
+    if (!props.user || !canRun.value || notebookPath.value) return;
     const selection = `${props.user.id}:${revisionGeneration}:${props.project.entrypoint}`;
     if (automaticPreview === selection) return;
     automaticPreview = selection;
@@ -622,7 +677,7 @@ watch(
 );
 function schedulePreview() {
   clearTimeout(previewTimer);
-  if (!livePreview.value || committing.value || netlogoPreparing.value) return;
+  if (!livePreview.value || committing.value || marimoEditing.value || netlogoPreparing.value) return;
   cancelPending();
   if (!props.user || !canRun.value) return;
   previewTimer = setTimeout(() => { if (!disposed) void run(); }, 700);
@@ -636,7 +691,7 @@ watch(draftChanges, (changes, previous) => {
       autosaveTimer = setTimeout(() => { void flushDraft(); }, 600);
     }
   }
-  if (!netlogoAuthoring.value && (changes.length || previous.length)) schedulePreview();
+  if (!marimoEditing.value && !netlogoAuthoring.value && (changes.length || previous.length)) schedulePreview();
 });
 watch(livePreview, (enabled) => {
   if (enabled) schedulePreview();
@@ -644,7 +699,7 @@ watch(livePreview, (enabled) => {
 });
 watch(committing, (value) => {
   if (value) { clearTimeout(previewTimer); cancelPending(); }
-  else { if (draftReady.value) { rememberDraft(); void flushDraft(); } if (!netlogoAuthoring.value && (draftChanges.value.length || launch.value?.draft)) schedulePreview(); }
+  else { if (draftReady.value) { rememberDraft(); void flushDraft(); } if (!marimoEditing.value && !netlogoAuthoring.value && (draftChanges.value.length || launch.value?.draft)) schedulePreview(); }
 });
 function stopLivePreview() {
   livePreview.value = false;
@@ -714,6 +769,7 @@ async function initialize() {
 }
 async function loadRevision(value: string, changes = false, context = "", reload = false) {
   if (!reload && !(await confirmLeave())) return;
+  marimoEditing.value = false;
   draftReady.value = false;
   buffers.files.clear();
   commitMessage.value = "";
@@ -827,7 +883,7 @@ async function selectFile(path: string) {
   }
 }
 async function closeFile(path: string) {
-  if (committing.value || !(await finishNetlogo())) return;
+  if (committing.value || !(await finishMarimo()) || !(await finishNetlogo())) return;
   const index = openFiles.value.indexOf(path);
   openFiles.value = openFiles.value.filter((item) => item !== path);
   if (selected.value === path && contentView.value === "source") {
@@ -840,7 +896,7 @@ async function closeFile(path: string) {
       sourceState.value = "ready";
     }
   }
-  if (!openFiles.value.length && props.project.entrypoint) await hideSource();
+  if (!openFiles.value.length && previewPath.value) await hideSource();
 }
 async function loadHistory(page = 1) {
   if (!tree.value) return;
@@ -919,7 +975,7 @@ async function viewVersion(commit: string, compare = false) {
   if (narrow.value) await closeSidebar();
 }
 async function hideSource() {
-  if (!(await finishNetlogo())) return;
+  if (!(await finishMarimo()) || !(await finishNetlogo())) return;
   sourceViewChosen = true;
   sourceOpen.value = false;
   writeUrl();
@@ -1150,8 +1206,8 @@ defineExpose({ stop, confirmLeave, refreshAccess });
       <span v-if="ancestor" class="ancestry-link">{{ project.forkedFrom ? "Based on" : "Extracted from" }} <a :href="`#/project/${ancestor.id}`">{{ ancestor.title }} ↗</a></span>
       <div class="workspace-actions">
         <LibraryUsage v-if="project.kind === 'library'" :project="project" :signed-in="!!user" @sign-in="emit('sign-in', $event)" />
-        <button class="quiet" :disabled="!tree || committing || buffers.dirty.value || netlogoAuthoring || netlogoPreparing" :title="buffers.dirty.value ? 'Save a version before forking' : undefined" @click="user ? showFork = true : emit('sign-in', () => showFork = true)">Fork</button>
-        <button v-if="sourceOpen" class="quiet" :disabled="!tree || revisionLoading || committing || libraryBusy || buffers.dirty.value || netlogoAuthoring || netlogoPreparing" :title="buffers.dirty.value ? 'Save a version before extracting' : undefined" @click="user ? showExtraction = true : emit('sign-in', () => showExtraction = true)">Extract library</button>
+        <button class="quiet" :disabled="!tree || committing || buffers.dirty.value || marimoEditing || netlogoAuthoring || netlogoPreparing" :title="buffers.dirty.value ? 'Save a version before forking' : undefined" @click="user ? showFork = true : emit('sign-in', () => showFork = true)">Fork</button>
+        <button v-if="sourceOpen" class="quiet" :disabled="!tree || revisionLoading || committing || libraryBusy || buffers.dirty.value || marimoEditing || netlogoAuthoring || netlogoPreparing" :title="buffers.dirty.value ? 'Save a version before extracting' : undefined" @click="user ? showExtraction = true : emit('sign-in', () => showExtraction = true)">Extract library</button>
         <button
           class="quiet"
           v-if="sourceOpen"
@@ -1162,7 +1218,7 @@ defineExpose({ stop, confirmLeave, refreshAccess });
           Console</button
         ><button v-if="launch" class="quiet" @click="stopLivePreview">Stop</button
         ><button
-          v-if="project.entrypoint"
+          v-if="previewPath"
           class="launch-button"
           :title="draftChanges.length ? 'Reload preview with draft changes' : tree ? 'Reload saved version' : undefined"
           :disabled="launching || stopping || !canRun"
@@ -1181,10 +1237,10 @@ defineExpose({ stop, confirmLeave, refreshAccess });
     <div v-if="accessError" role="alert" class="error-banner">{{ accessError }}<button @click="refreshAccess">Retry access status</button></div>
     <div v-if="accessStatus?.effective.mode === 'owner_read_only'" role="status" class="error-banner">Access change pending · Owner read-only <button @click="refreshAccess">Refresh access status</button></div>
     <div v-if="editable && sourceOpen" class="commit-toolbar" :inert="netlogoAuthoring || netlogoPreparing || undefined">
-      <span :title="buffers.dirty.value ? 'Draft changes are autosaved. Save a version to add them to history.' : undefined">{{ buffers.dirty.value ? `${buffers.changed.value.length} draft changes` : "Version saved" }}</span>
+      <span :title="buffers.dirty.value ? 'Draft changes are autosaved. Save a version to add them to history.' : undefined">{{ marimoSaving ? "Saving notebook…" : buffers.dirty.value ? `${buffers.changed.value.length} draft changes` : "Version saved" }}</span>
       <input v-model="commitMessage" aria-label="What changed?" placeholder="What changed? (optional)" maxlength="2000" />
-      <button class="quiet" :disabled="committing || (!buffers.dirty.value && !pendingSave)" @click="commitChanges()">{{ committing ? "Saving…" : "Save version" }}</button>
-      <button v-if="project.entrypoint" class="quiet" :disabled="committing || !buffers.dirty.value" @click="commitChanges(true)">Save version and run</button>
+      <button class="quiet" :disabled="committing || marimoSaving || (!marimoEditing && !buffers.dirty.value && !pendingSave)" @click="commitChanges()">{{ committing || marimoSaving ? "Saving…" : "Save version" }}</button>
+      <button v-if="project.entrypoint" class="quiet" :disabled="committing || marimoSaving || (!marimoEditing && !buffers.dirty.value)" @click="commitChanges(true)">Save version and run</button>
     </div>
     <div v-if="draftError || recovery" class="error-banner" role="alert">
       <span>{{ draftError || "A browser recovery copy is available." }}</span>
@@ -1204,7 +1260,7 @@ defineExpose({ stop, confirmLeave, refreshAccess });
       class="workspace"
       :style="{
         '--sidebar-width': `${sidebarWidth}px`,
-        '--code-width': project.entrypoint ? `${codeWidth}%` : '100%',
+        '--code-width': previewPath ? `${codeWidth}%` : '100%',
         '--console-height': `${consoleHeight}px`,
       }"
     >
@@ -1241,7 +1297,7 @@ defineExpose({ stop, confirmLeave, refreshAccess });
                     : "No revision loaded."
               }}
             </p>
-          <ProjectLibraries v-if="tree" :initial-library-id="requestedLibrary" @requested="requestedLibrary = ''" :project="project" :commit="tree.commit" :branch="branch" :editable="!!user && ['write', 'admin'].includes(project.permission) && branch.startsWith('refs/heads/') && draftReady && !revisionLoading && !accessBlocked && !committing && !metadataEditing && !metadataBusy" :dirty="false" :draft-version="draft?.version ?? 0" :use-draft="draftReady" :flush-draft="flushDraft" @busy="libraryBusy = $event || libraryHydrating" @drafted="libraryDrafted" />
+          <ProjectLibraries v-if="tree" :initial-library-id="requestedLibrary" @requested="requestedLibrary = ''" :project="project" :commit="tree.commit" :branch="branch" :editable="!!user && ['write', 'admin'].includes(project.permission) && branch.startsWith('refs/heads/') && draftReady && !revisionLoading && !accessBlocked && !committing && !metadataEditing && !metadataBusy && !marimoEditing" :dirty="false" :draft-version="draft?.version ?? 0" :use-draft="draftReady" :flush-draft="flushDraft" @busy="libraryBusy = $event || libraryHydrating" @drafted="libraryDrafted" />
           </template>
           <template v-else-if="sidebar === 'history'">
             <div
@@ -1302,7 +1358,7 @@ defineExpose({ stop, confirmLeave, refreshAccess });
               <button class="quiet" :disabled="metadataBusy || accessBlocked">Save metadata</button>
               <button class="quiet" type="button" :disabled="metadataBusy || accessBlocked" @click="metadataEditing = false">Cancel</button>
             </form>
-            <button v-else-if="project.permission === 'admin'" class="quiet" :disabled="revisionLoading || committing || accessBlocked" @click="editMetadata">Edit metadata</button>
+            <button v-else-if="project.permission === 'admin'" class="quiet" :disabled="revisionLoading || committing || marimoEditing || accessBlocked" @click="editMetadata">Edit metadata</button>
             <ProjectAccess v-if="owner && !demoMode" :project="project" :status="accessStatus" @status="accessStatus = $event" @updated="emit('updated', $event)" />
             <h2>{{ project.title }}</h2>
             <p>{{ project.description }}</p>
@@ -1395,7 +1451,8 @@ defineExpose({ stop, confirmLeave, refreshAccess });
                 </button>
               </div>
               <div class="editor-actions">
-                <button v-if="editable && selected" class="quiet" :disabled="committing" @click="deleteFile">Delete file</button>
+                <button v-if="/\.py$/i.test(selected) && /(?:import marimo|from marimo)/.test(source) && !marimoEditing" class="quiet" @click="notebookPath = selected; openNotebook(false)">Open notebook</button>
+                <button v-if="editable && selected" class="quiet" :disabled="committing || marimoEditing" @click="deleteFile">Delete file</button>
                 <button
                   v-if="
                     selected &&
@@ -1418,7 +1475,7 @@ defineExpose({ stop, confirmLeave, refreshAccess });
                 >
                   Compare
                 </button>
-                <button v-if="project.entrypoint" class="icon-button" aria-label="Close code view" title="Close code view" @click="hideSource">×</button>
+                <button v-if="previewPath" class="icon-button" aria-label="Close code view" title="Close code view" @click="hideSource">×</button>
               </div>
             </div>
             <div v-if="revisionLoading" class="empty" role="status">
@@ -1464,7 +1521,7 @@ defineExpose({ stop, confirmLeave, refreshAccess });
                   :is="/\.nlogox?$/i.test(selected) ? NetLogoSourceEditor : SourceEditor"
                   ref="sourceEditor"
                   :content="source"
-                  :editable="editable"
+                  :editable="editable && !(marimoEditing && selected === previewPath)"
                   @update:content="updateSource"
                   :path="selected"
                   @cursor="
@@ -1543,7 +1600,7 @@ defineExpose({ stop, confirmLeave, refreshAccess });
           </section>
         </section>
         <PaneDivider
-          v-if="project.entrypoint && sourceOpen"
+          v-if="previewPath && sourceOpen"
           v-model:value="codeWidth"
           label="Resize source and preview"
           :min="25"
@@ -1553,14 +1610,19 @@ defineExpose({ stop, confirmLeave, refreshAccess });
           :collapse-below="12"
           @collapse="hideSource"
         />
-        <section v-if="project.entrypoint" class="preview-pane">
+        <section v-if="project.entrypoint || notebookPath" class="preview-pane">
           <div class="pane-heading preview-toolbar">
+            <select v-if="visibleFiles.some(file => /\.py$/i.test(file.path))" v-model="notebookPath" :disabled="marimoEditing" aria-label="Preview file" @change="openNotebook(false)">
+              <option value="">{{ project.entrypoint || 'Choose a notebook' }}</option>
+              <option v-for="file in visibleFiles.filter(file => /\.py$/i.test(file.path) && file.path !== project.entrypoint)" :key="file.path" :value="file.path">{{ file.path }}</option>
+            </select>
+            <button v-if="/\.py$/i.test(previewPath) && editable" class="quiet" :disabled="marimoSaving || launching || committing || metadataEditing" @click="openNotebook(!marimoEditing)">{{ marimoEditing ? 'View notebook' : 'Edit notebook' }}</button>
             <span>Preview <span v-if="launch?.draft" class="preview-draft">· Draft</span></span>
-            <select v-model="effectivePreviewSizing" aria-label="Preview size" class="preview-size" :disabled="netlogoAuthoring" title="Fit the simulation to this pane, or display it at its original size">
+            <select v-model="effectivePreviewSizing" aria-label="Preview size" class="preview-size" :disabled="netlogoAuthoring || /\.py$/i.test(previewPath)" title="Fit the simulation to this pane, or display it at its original size">
               <option value="fit">Fit</option>
               <option value="actual">Actual size</option>
             </select>
-            <label v-if="sourceOpen && !netlogoAuthoring" class="live-preview"><input v-model="livePreview" type="checkbox" />Live preview</label>
+            <label v-if="sourceOpen && !netlogoAuthoring && !marimoEditing" class="live-preview"><input v-model="livePreview" type="checkbox" />Live preview</label>
             <template v-if="isNetlogo">
               <span v-if="netlogoAuthoring" role="status">{{ netlogoSaving || netlogoDirty ? 'Saving interface…' : 'Interface saved to draft' }}</span>
               <button v-if="netlogoAuthoring" class="quiet" :disabled="netlogoSaving" @click="run">Done</button>
@@ -1572,15 +1634,17 @@ defineExpose({ stop, confirmLeave, refreshAccess });
           <div v-if="launchError" class="pane-error" role="alert">
             {{ launchError }} <button @click="run">Retry</button>
           </div>
+          <div v-if="notebookError" class="pane-error" role="alert">{{ notebookError }}</div>
           <div v-if="netlogoError" class="pane-error" role="alert">{{ netlogoError }} <button v-if="netlogoDirty" @click="captureNetlogo()">Retry save</button></div>
           <div v-if="netlogoNotice" class="pane-error" role="status">{{ netlogoNotice }}</div>
           <iframe
             v-if="launch"
             ref="iframe"
             :key="launch.id"
+            :inert="committing || marimoSaving || undefined"
             :src="launch.url"
             title="Artifact preview"
-            :sandbox="launch.runtime === 'netlogo' ? (demoMode ? 'allow-scripts allow-downloads allow-modals allow-forms' : 'allow-scripts allow-same-origin allow-downloads allow-modals allow-forms') : 'allow-scripts'"
+            :sandbox="launch.runtime === 'marimo' ? (demoMode ? 'allow-scripts allow-downloads' : 'allow-scripts allow-same-origin allow-downloads') : launch.runtime === 'netlogo' ? (demoMode ? 'allow-scripts allow-downloads allow-modals allow-forms' : 'allow-scripts allow-same-origin allow-downloads allow-modals allow-forms') : 'allow-scripts'"
             referrerpolicy="no-referrer"
           ></iframe>
           <div v-else-if="!launchError" class="preview-empty">

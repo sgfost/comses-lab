@@ -21,7 +21,8 @@
     "build:demo": "vite build --config web/vite.config.ts --mode demo",
     "dev:demo": "vite --config web/vite.config.ts --mode demo",
     "serve:demo": "node scripts/serve-demo.mjs",
-    "test:demo": "npm run build:demo && playwright test --config playwright.demo.config.ts"
+    "test:demo": "npm run build:demo && playwright test --config playwright.demo.config.ts",
+    "setup:marimo": "node scripts/marimo-runtime.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

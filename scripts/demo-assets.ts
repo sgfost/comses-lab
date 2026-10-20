@@ -22,7 +22,7 @@ export function demoAssets(root: string) {
     return result;
   }
   const hash = (text: string) => createHash('sha256').update(text).digest('hex');
-  const seed: DemoSeed = { projects: [], templates: templates.filter(t => t.id === 'netlogo' || t.kind === 'library' || showcaseTemplates.some(example => example.id === t.id)).map(({files: paths, ...t}) => ({ ...t, files: Object.fromEntries(paths.map(path => [path, readFileSync(resolve(root, 'examples', t.id, path), 'utf8')])) })) };
+  const seed: DemoSeed = { projects: [], templates: templates.filter(t => t.id === 'marimo' || t.id === 'netlogo' || t.kind === 'library' || showcaseTemplates.some(example => example.id === t.id)).map(({files: paths, ...t}) => ({ ...t, files: Object.fromEntries(paths.map(path => [path, readFileSync(resolve(root, 'examples', t.id, path), 'utf8')])) })) };
   function add(id: string, title: string, directory: string, kind: 'model' | 'library', entrypoint: string, description: string, source = files(directory)) {
     const value: DemoProject = {
       project: { id, title, kind, description, entrypoint, visibility: 'public', ownerId: 'demo-examples', ownerName: 'CoMSES Lab examples', license: 'MIT', permission: 'read', metadataVersion: 0, dataOrigins: [], forkedFrom: null, extractedFrom: null, forgejoOwner: '', forgejoRepo: '', forgejoId: 0 },
@@ -38,7 +38,7 @@ export function demoAssets(root: string) {
   const kit = add('browser-kit', 'Browser kit', 'browser-kit', 'library', '', 'Canvas, controls and animation helpers.');
   const gridFiles = files('agent-grid'); include(gridFiles, kit, 'vendor/browser-kit');
   add('agent-grid', 'Agent grid', 'agent-grid', 'library', '', 'A small agent-based modeling library built on Browser kit.', gridFiles);
-  for (const t of [...showcaseTemplates, templates.find(t => t.id === 'netlogo')!]) {
+  for (const t of [...showcaseTemplates, templates.find(t => t.id === 'netlogo')!, templates.find(t => t.id === 'marimo')!]) {
     add(t.id, t.id === 'netlogo' ? 'NetLogo walks' : t.title, t.id, 'model', t.entrypoint, t.description);
   }
   writeFileSync(join(output, 'demo-seed.json'), JSON.stringify(seed));
@@ -47,6 +47,7 @@ export function demoAssets(root: string) {
   const vendor = join(output, 'vendor');
   cpSync(resolve(root, 'node_modules/esbuild-wasm/esbuild.wasm'), join(vendor, 'esbuild.wasm'));
   cpSync(resolve(root, 'runtime/vendor/netlogo/2.15.3'), join(vendor, 'netlogo'), { recursive: true });
+  cpSync(resolve(root, 'runtime/vendor/marimo/0.25.1/static'), join(vendor, 'marimo/0.25.1'), { recursive: true });
   writeFileSync(join(output, '.nojekyll'), '');
   return output;
 }

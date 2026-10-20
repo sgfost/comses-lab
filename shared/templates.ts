@@ -9,6 +9,7 @@ export const showcaseTemplates: (ProjectTemplate & { files: string[] })[] = [
 
 export const templates: (ProjectTemplate & { files: string[] })[] = [
   ...showcaseTemplates,
+  { kind: "model", id: "marimo", title: "Marimo notebook", description: "An interactive Python experiment with a reusable model.", entrypoint: "notebook.py", license: "MIT", files: ["notebook.py", "model.py", "README.md"] },
   { kind: "model", id: "commons", title: "The commons garden", description: "A resource regeneration and harvesting model.", entrypoint: "index.html", license: "MIT", files: ["index.html", "garden.js", "ecology.js", "README.md"] },
   { kind: "model", id: "worker", title: "Random walks", description: "Random walks computed in a JavaScript worker.", entrypoint: "index.html", license: "MIT", files: ["index.html", "walk.js", "walk-worker.js", "random.js", "README.md"] },
   { kind: "model", id: "python", title: "Heat diffusion", description: "Heat diffusion computed in Python with Pyodide.", entrypoint: "index.html", license: "MIT", files: ["index.html", "heat.js", "python-worker.js", "model.py", "diffusion.py", "README.md"] },

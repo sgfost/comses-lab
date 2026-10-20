@@ -37,7 +37,7 @@ test.beforeEach(async ({ page }) => {
 
 test('showcase catalog, Python workers, physics controls, and isolated model code', async ({ page }) => {
   await page.goto('./');
-  await expect(page.locator('.model-row')).toHaveCount(5);
+  await expect(page.locator('.model-row')).toHaveCount(6);
   await page.getByRole('searchbox').fill('Galaxy encounter');
   await page.getByRole('link').filter({has:page.getByRole('heading',{name:'Galaxy encounter',exact:true})}).click();
   await expect(preview(page).getByRole('status')).toContainText('Running');

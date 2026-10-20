@@ -8,6 +8,7 @@ Use the project's Node 24 / npm 11 toolchain:
 
 ```sh
 npm ci
+npm run setup:marimo
 npm run build:demo
 npm run serve:demo
 ```
@@ -40,14 +41,15 @@ See [GitHub’s custom Pages workflow documentation](https://docs.github.com/en/
 
 Assets use relative URLs by default, so the same build works at `/comses-lab/`, a different repository name, or a custom domain's root. Routes use URL hashes, so direct project links need no server rewrites. An explicit build path can be supplied with `DEMO_BASE=/comses-lab/ npm run build:demo` if desired.
 
-Serve over HTTPS, or localhost during development; browser storage coordination and the compiler require modern browser APIs. Opening `index.html` directly as a `file:` URL is not supported. The runtime assets are included in the output, with no CDN dependency. Python and the in-browser JavaScript compiler download their WASM assets when first needed.
+Serve over HTTPS, or localhost during development; browser storage coordination and the compiler require modern browser APIs. Opening `index.html` directly as a `file:` URL is not supported. The standard model runtime and JavaScript compiler assets are bundled. Marimo’s pinned frontend is also bundled; its Pyodide runtime and Python packages download from Marimo/Pyodide and PyPI hosts when needed. Notebook execution and editing run entirely in browser workers. The initial Marimo asset setup requires Python 3 only to extract the verified archive; no Python server is needed.
 
 ## What visitors can do
 
-- Browse five examples: Ant trails and Predator–prey landscape (Python/Pyodide workers), Galaxy encounter and Wave interference (JavaScript/Canvas), and NetLogo walks. Browser kit and Agent grid remain as the two library examples.
+- Browse six examples: Ant trails and Predator–prey landscape (Python/Pyodide workers), Galaxy encounter and Wave interference (JavaScript/Canvas), NetLogo walks, and a Marimo population notebook. Browser kit and Agent grid remain as the two library examples.
 - Fork an example into their own browser workspace, or create a project from a template.
 - Edit files with live preview; autosave drafts; save versions, view history/diffs, and restore an earlier version.
 - Create/extract libraries, install exact local versions, inspect nested dependencies, and update/remove unchanged installed files.
+- Run Marimo notebooks, edit their cells, and save notebook source into browser-local drafts and versions. Companion Python modules and project data are available through Pyodide’s filesystem.
 - Edit NetLogo code and interfaces, and import native NetLogo source through the creation dialog.
 - Export their workspace as JSON and import it into another browser. Imports add projects; duplicate project IDs are refused instead of overwriting existing work. Reset removes local projects and restores the original catalog.
 
@@ -60,6 +62,8 @@ There are no accounts, private repositories, groups, permission management, shar
 The JavaScript compiler runs in the host page's worker and bundles project modules without executing them. Each preview runs in an opaque sandboxed iframe. Its code cannot access the application's DOM or IndexedDB. The launcher supplies snapshot files through blob URLs, resolves `import.meta.url` resource paths, and prepares classic workers. Python uses the bundled Pyodide runtime. Runtime console, stop/reset, and live preview reuse the existing bridge.
 
 The demo supports ordinary JavaScript modules, JSON imports, inline module scripts, local stylesheets, `new URL(path, import.meta.url)`, and fetches of project files. It is not a general web server: arbitrary computed module imports, server routes, package installation, CSS module imports, and external JavaScript imports are outside its supported scope. External data requires an allowed data origin in project metadata and CORS support from the data server. Snapshot files are UTF-8 text (up to 100 files / 5 MB per snapshot), matching the editable prototype's intended source workflow.
+
+Marimo uses the same pinned frontend and save bridge as the full application. The launcher supplies the complete snapshot directly to both Pyodide workers, preserving project paths under `/marimo`; no import scanning or backend launch endpoint is involved. Its opaque iframe gets disposable storage and cannot read the host’s IndexedDB. Only notebook source returns to the host draft flow; arbitrary generated files are not persisted. Static hosts must serve frontend assets with CORS headers for the opaque iframe and module workers (GitHub Pages and the included static server do). Notebook dependencies must be Pyodide-compatible; this is not an offline Python environment.
 
 NetLogo uses the same pinned compiler/player and interface bridge. Its preview gets disposable in-memory storage instead of the application's storage. NetLogo companion-file loading is not adapted to the demo's snapshot resources; the bundled NetLogo model is self-contained. The demo does not reproduce the backend runtime's per-launch hostnames, credential revocation, or standalone launch links. Native NetLogo/HTML export remains available in the player. Main-thread infinite loops have the same browser responsiveness limitation as the existing runtime.
 

@@ -46,6 +46,8 @@ For an unsaved preview, the same endpoint accepts optional `changes` using the e
 
 The preview URL is a short-lived private-content capability, expires in ten minutes, and is revoked on logout/Stop. Do not log or share it. It grants no Lab session privileges. HTML/Pyodide models execute inside an opaque sandbox; native `.nlogo`/`.nlogox` entrypoints use a unique launch origin and the shared NetLogo Web player. Native launch responses add `runtime: "netlogo"` and `standaloneUrl` for the same snapshot in a separate tab. See [runtime isolation](../runtime/README.md).
 
+Marimo launches accept optional `entrypoint` (an existing `.py` notebook path, or the configured entrypoint) and `edit: true` for users with write access. This selects a companion notebook without changing project metadata. The response includes `runtime: "marimo"`; the browser loads the pinned editor/runtime and mounts the same snapshot into Pyodide. Source edits still use the ordinary draft/save APIs. Read-only launches have no saving authority. See [Marimo runtime](../runtime/README.md#marimo-notebooks).
+
 ## Authoring
 
 Native agent requests use `Authorization: Bearer <token>` and may omit Origin; a supplied foreign/opaque Origin is rejected. A bearer plus a session cookie is ambiguous and returns 401. Invalid bearers never fall back to anonymous reads. Bearers are restricted to their project scopes and receive read/write permission only; owner metadata and group/access/session administration remain human-only. Creation requires an explicit grant capability; newly created projects are enrolled in that grant. Public source visibility does not widen a grant's Lab project scope.
@@ -54,7 +56,7 @@ Native agent requests use `Authorization: Bearer <token>` and may omit Origin; a
 
 Project responses include server-computed `permission` (`admin` for the owner, `write` for authorized writers, `read` for other authorized readers), `metadataVersion`, `dataOrigins`, and `forkedFrom` (source project ID and exact commit, or null). Inaccessible projects return 404; authenticated readers attempting writes return 403. Mutations require a valid original session throughout preparation.
 
-`GET /templates` returns `{ templates: [{ id, title, description, entrypoint, license }] }`. Model templates (`commons`, `worker`, `python`, `netlogo`) and library templates (`library-js`, `library-python`) contain ordinary files and require no Lab model SDK.
+`GET /templates` returns `{ templates: [{ id, title, description, entrypoint, license }] }`. Model templates (`commons`, `worker`, `python`, `marimo`, `netlogo`) and library templates (`library-js`, `library-python`) contain ordinary files and require no Lab model SDK.
 
 `POST /projects` accepts `{ requestId, templateId, title, visibility, description? }`. Request IDs are UUIDs. Title is trimmed and limited to 120 characters; description is limited to 4000 characters and defaults to the template description. Visibility is `public` or `private`. Response is `{ project, ref: "refs/heads/main", commit }`: 201 for creation and 200 for a completed replay. Keep the same request ID when retrying an uncertain creation; a different payload under that ID returns 409 `request_id_reused`.
 

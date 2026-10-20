@@ -31,4 +31,4 @@ Use one npm workspace and lockfile. A small Compose file may manage Forgejo alon
 
 The app supports artifact and library discovery, browser editing, drafts, saved versions, forks, reusable libraries, group permissions, and scoped agent access. JavaScript, Python/Pyodide, and NetLogo models execute in isolated browser previews.
 
-See [local setup and integration tests](LOCAL-DEVELOPMENT.md), [API reference](API.md), and [runtime behavior](../runtime/README.md). Saved results, frozen releases, and marimo integration remain planned.
+See [local setup and integration tests](LOCAL-DEVELOPMENT.md), [API reference](API.md), and [runtime behavior](../runtime/README.md). Saved results and frozen releases remain planned. Marimo notebooks run and edit through the isolated browser runtime.

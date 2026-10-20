@@ -25,7 +25,7 @@ export interface Project {
   dataOrigins: string[];
   forkedFrom: { projectId: string; commit: string } | null;
 }
-export type TemplateId = "ant-trails" | "predator-prey" | "galaxy-encounter" | "wave-tank" | "commons" | "worker" | "python" | "netlogo" | "library-python" | "library-js";
+export type TemplateId = "ant-trails" | "predator-prey" | "galaxy-encounter" | "wave-tank" | "commons" | "worker" | "python" | "marimo" | "netlogo" | "library-python" | "library-js";
 export interface ProjectTemplate {
   kind: ProjectKind;
   id: TemplateId;
@@ -124,7 +124,7 @@ export interface CommitDiff {
   patch: string;
 }
 export interface Launch {
-  runtime?: "netlogo";
+  runtime?: "netlogo" | "marimo";
   standaloneUrl?: string;
   draft?: boolean;
   id: string;

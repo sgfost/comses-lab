@@ -4,6 +4,7 @@ import type { Files } from './types';
 import { demoBase } from './storage';
 import { installBridge } from '../../../runtime/bridge.js';
 import { installPreviewFit } from '../../../runtime/preview-fit.js';
+import { installMarimoBridge } from '../../../runtime/marimo-bridge.js';
 import { installNetLogoBridge } from '../../../runtime/netlogo-bridge.js';
 import { installDemoIO, startDemoDocument, installDemoStorage } from './runtime.js';
 import { MAX_RUNTIME_TEXT, MAX_RUNTIME_EVENTS_PER_SECOND, MAX_NETLOGO_SOURCE_BYTES } from '../../../shared/runtime';
@@ -40,7 +41,7 @@ async function bundle(files: Files) {
 let netlogoPlayer: Promise<string> | undefined;
 export function getDemoLaunch(id: string) { return launches.get(id); }
 export function revokeDemoLaunch(id: string) { const value = launches.get(id); if (value) { URL.revokeObjectURL(value.url); launches.delete(id); } }
-export async function createDemoLaunch(project: Project, commit: string, source: Files, draft: boolean): Promise<Launch> {
+export async function createDemoLaunch(project: Project, commit: string, source: Files, draft: boolean, edit = false): Promise<Launch> {
   if (!Object.hasOwn(source, project.entrypoint)) throw new Error('The project entrypoint is missing. Choose an existing file in About.');
   const id = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   const appOrigin = location.origin;
@@ -51,7 +52,17 @@ export async function createDemoLaunch(project: Project, commit: string, source:
   // Firefox checks worker module imports against worker-src as well as script-src.
   const policy = `default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob: ${demoBase.origin}; style-src 'unsafe-inline' blob:; img-src data: blob:; font-src data:; connect-src blob: ${demoBase.origin} ${project.dataOrigins.join(' ')}; worker-src blob: ${new URL("vendor/pyodide/", demoBase).href}; frame-src ${netlogo ? "blob: data:" : "'none'"}; object-src 'none'; base-uri 'none'; form-action 'none'`;
   let html: string;
-  if (netlogo) {
+  const marimo = /\.py$/i.test(project.entrypoint);
+  if (marimo) {
+    const assets = new URL('vendor/marimo/0.25.1/', demoBase);
+    const response = await fetch(new URL('index.html', assets));
+    if (!response.ok) throw new Error('Could not load Marimo. Run npm run setup:marimo and rebuild the demo.');
+    const dependencies = 'https://cdn.jsdelivr.net https://wasm.marimo.app https://pypi.org https://files.pythonhosted.org';
+    const notebookPolicy = `default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob: data: ${demoBase.origin} ${dependencies}; style-src 'unsafe-inline' ${demoBase.origin}; img-src data: blob: ${demoBase.origin}; font-src data: ${demoBase.origin}; connect-src blob: data: ${demoBase.origin} ${dependencies} ${project.dataOrigins.join(' ')}; worker-src blob: data: ${demoBase.origin}; frame-src blob: data:; object-src 'none'; base-uri 'none'; form-action 'none'`;
+    html = (await response.text()).replaceAll('./assets/', new URL('assets/', assets).href)
+      .replace(/<script data-marimo="true">\s*Object.defineProperty[\s\S]*?<\/script>/, '')
+      .replace('<head>', `<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${notebookPolicy}"><script>(${installDemoStorage.toString()})();${bridge}(${installMarimoBridge.toString()})(${json({ ...context, path: project.entrypoint, source: source[project.entrypoint], files: source, edit, version: '0.25.1' })});</script><marimo-wasm hidden></marimo-wasm>`);
+  } else if (netlogo) {
     const player = await (netlogoPlayer ??= fetch(new URL('vendor/netlogo/player.html',demoBase)).then(r => { if (!r.ok) throw new Error('Could not load NetLogo.'); return r.text(); }).catch(e => {netlogoPlayer=undefined;throw e;}));
     const marker = '<script type="text/nlogo" id="nlogo-code" data-filename="model.nlogox"></script>';
     if (!player.includes(marker)) throw new Error('Unexpected NetLogo player.');
@@ -73,6 +84,6 @@ export async function createDemoLaunch(project: Project, commit: string, source:
     html = `<!doctype html><meta http-equiv="Content-Security-Policy" content="${policy}"><script>(${startDemoDocument.toString()})(${json(payload)},${installDemoIO.toString()});</script>`;
   }
   const url = URL.createObjectURL(new Blob([html],{type:'text/html'}));
-  const launch: Launch = { id, commit, url, draft, expiresAt: Number.MAX_SAFE_INTEGER, ...(netlogo ? { runtime:'netlogo' as const } : {}) };
+  const launch: Launch = { id, commit, url, draft, expiresAt: Number.MAX_SAFE_INTEGER, ...(marimo ? { runtime:'marimo' as const } : netlogo ? { runtime:'netlogo' as const } : {}) };
   launches.set(id,launch); return launch;
 }

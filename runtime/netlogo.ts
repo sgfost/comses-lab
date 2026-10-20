@@ -1,30 +1,9 @@
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { installNetLogoBridge } from "./netlogo-bridge.js";
 import { MAX_NETLOGO_SOURCE_BYTES } from "../shared/runtime.ts";
 
 export const NETLOGO_VERSION = "2.15.3";
 export const isNetLogo = (path: string) => /\.nlogox?$/i.test(path);
-export class NetLogoConfigurationError extends Error {}
-
-export function assertNetLogoOrigins(appOrigin: string, runtimeOrigin: string): void {
-  const app = new URL(appOrigin).hostname.toLowerCase().replace(/\.$/, "");
-  const runtime = new URL(runtimeOrigin).hostname.toLowerCase().replace(/\.$/, "");
-  const local = new Set(["localhost", "127.0.0.1", "[::1]"]);
-  if (local.has(app) && local.has(runtime)) return;
-  // Conservative without a public-suffix database: even separate *.co.uk sites
-  // must use runtime domains with different final two labels.
-  if (app.split(".").slice(-2).join(".") === runtime.split(".").slice(-2).join("."))
-    throw new NetLogoConfigurationError("NetLogo runtime configuration requires an isolated domain: application/Forgejo and runtime hosts must have different final two hostname labels (except local development on localhost/loopback).");
-}
-
-export function netLogoOrigin(id: string, runtimeOrigin: string): string {
-  const url = new URL(runtimeOrigin);
-  const local = url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
-  url.hostname = `${createHash("sha256").update(id).digest("hex").slice(0, 40)}.${local ? "localhost" : url.hostname}`;
-  return url.origin;
-}
-
 function scriptJSON(value: unknown): string {
   return JSON.stringify(value).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 }

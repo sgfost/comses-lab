@@ -5,7 +5,7 @@ import { validateCommitRequest } from "./git.ts";
 import { serve } from "@hono/node-server";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { settings } from "./config.ts";
-import { NetLogoConfigurationError } from "../runtime/netlogo.ts";
+import { RuntimeConfigurationError } from "../runtime/origin.ts";
 import { db, projectsForPrincipal, projectForPrincipal, accessPending } from "./db.ts";
 import {
   cookieName,
@@ -339,6 +339,12 @@ app.post("/api/projects/:id/launch", bodyLimit({ maxSize: 12_000_000 }), async (
       },
       400,
     );
+  if (body.edit !== undefined && typeof body.edit !== "boolean")
+    return c.json({ error: { code: "invalid_edit", message: "Notebook edit must be a boolean" } }, 400);
+  const entrypoint = body.entrypoint ?? project.entrypoint;
+  if (typeof entrypoint !== 'string' || (entrypoint !== project.entrypoint && !/\.py$/i.test(entrypoint)))
+    return c.json({ error: { code: 'invalid_entrypoint', message: 'Choose a project notebook' } }, 400);
+  if (body.edit && project.permission === 'read') return c.json({ error: { code: 'forbidden', message: 'Editing permission is required' } }, 403);
   // Draft previews use the same path, UTF-8 and size rules as file commits.
   const changes = body.changes === undefined ? [] : validateCommitRequest({
     ref: "refs/heads/main", expectedCommit: body.commit, message: "Draft preview", changes: body.changes,
@@ -380,7 +386,7 @@ app.post("/api/projects/:id/launch", bodyLimit({ maxSize: 12_000_000 }), async (
   }
   if (files.size > 100 || [...files.values()].reduce((size, bytes) => size + bytes.length, 0) > 5_000_000)
     return c.json({ error: { code: "too_large", message: "Preview supports at most 100 files and 5 MB" } }, 413);
-  if (!files.has(project.entrypoint))
+  if (!files.has(entrypoint))
     return c.json(
       {
         error: {
@@ -406,8 +412,8 @@ app.post("/api/projects/:id/launch", bodyLimit({ maxSize: 12_000_000 }), async (
   if (!current) return c.json({ error: { code: "not_found", message: "Project not found" } }, 404);
   if (accessPending(project.id)) return c.json({ error: { code: "access_pending", message: "Project access is being reconciled" } }, 409);
   if (changes.length && current.permission === "read") return c.json({ error: { code: "forbidden", message: "Editing permission is required for draft previews" } }, 403);
-  if (!files.has(current.entrypoint)) return c.json({ error: { code: "missing_entrypoint", message: "The configured entrypoint is missing" } }, 422);
-  return c.json({ ...createLaunch({ projectId: current.id, commit: tree.commit, entrypoint: current.entrypoint, files, principal: launchPrincipal(principal), dataOrigins: current.dataOrigins }), ...(changes.length ? { draft: true } : {}) });
+  if (!files.has(body.entrypoint ?? current.entrypoint)) return c.json({ error: { code: "missing_entrypoint", message: "The configured entrypoint is missing" } }, 422);
+  return c.json({ ...createLaunch({ projectId: current.id, commit: tree.commit, entrypoint: body.entrypoint ?? current.entrypoint, edit: body.edit === true && current.permission !== "read", files, principal: launchPrincipal(principal), dataOrigins: current.dataOrigins }), ...(changes.length ? { draft: true } : {}) });
 });
 app.get("/api/launches/:id", (c) => {
   const principal = c.get("principal");
@@ -425,7 +431,7 @@ app.delete("/api/launches/:id", (c) => {
   return c.json({ ok: true });
 });
 app.onError((error, c) => {
-  if (error instanceof NetLogoConfigurationError) return c.json({ error: { code: "runtime_configuration", message: error.message } }, 503);
+  if (error instanceof RuntimeConfigurationError) return c.json({ error: { code: "runtime_configuration", message: error.message } }, 503);
   if (error instanceof AuthError) return c.json({ error: { code: error.code, message: error.message } }, 401);
   if (error instanceof AuthoringError) return c.json({ error: { code: error.code, message: error.message, ...error.details } }, error.status);
   if (error instanceof SourceError)

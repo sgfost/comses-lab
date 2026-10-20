@@ -22,6 +22,8 @@ export type RuntimeEvent = RuntimeEnvelope &
       }
     | { type: "error"; text: string }
     | { type: "stopped"; workers: number }
+    | { type: "marimo-save"; source: string }
+    | { type: "marimo-export"; requestId: string; source: string }
     | { type: "netlogo-ready" }
     | { type: "netlogo-change" }
     | { type: "netlogo-open-required"; text: string }
@@ -74,6 +76,9 @@ export function isRuntimeEvent(value: unknown): value is RuntimeEvent {
     case "netlogo-error":
     case "netlogo-open-required":
       return keys(value, ["text"]) && text(value.text);
+    case "marimo-save":
+      return keys(value, ["source"]) && typeof value.source === "string" && value.source.length <= MAX_NETLOGO_SOURCE_BYTES && new TextEncoder().encode(value.source).length <= MAX_NETLOGO_SOURCE_BYTES;
+    case "marimo-export":
     case "netlogo-export":
       return keys(value, ["requestId", "source"]) && requestId(value.requestId) &&
         typeof value.source === "string" && value.source.length <= MAX_NETLOGO_SOURCE_BYTES &&
